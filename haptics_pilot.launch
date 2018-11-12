@@ -1,0 +1,6 @@
+<launch>
+	<node name="force_sensor" pkg="visuohaptics"
+	type = "force_sensor_node.py" />
+	<node name="haptics_pilot" pkg="visuohaptics"
+	type = "pilot_test_with_haptics.py" output = "screen"/>
+</launch>
