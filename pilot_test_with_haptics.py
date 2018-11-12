@@ -186,7 +186,7 @@ class arm_capture_obj:
         self.zero_forces(0.01)
         self.c.teleop_start()
 
-def get_cartesian(self, pose):
+    def get_cartesian(self, pose):
         position = pose.p
         x = position.x()
         y = position.y()
@@ -205,8 +205,7 @@ def get_cartesian(self, pose):
         self.pos_desired = self.get_cartesian(self.pose_desired)
         self.ref_force = 0
         self.trial_num = trial_num
-        self.data = np.hstack(
-            (trial_num, self.ref_force, self.time, self.pos_current, self.pos_desired, self.wrench, self.force))
+        self.data = np.hstack((trial_num, self.ref_force, self.time, self.pos_current, self.pos_desired, self.wrench, self.force))
 
     def record_data(self, forcefeedback, ref_force, trial_num):
         self.pose_current = self.p2.get_current_position()
