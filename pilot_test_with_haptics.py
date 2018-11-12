@@ -335,6 +335,8 @@ def main():
     trial_num = input('Key in the trial number you want to start from: ')
     trial_num = trial_num-1
 
+    break_trial = 90
+
     # create the subscriber to check the footpedals
     sub = rospy.Subscriber('/dvrk/footpedals/camera', Joy, trigger_callback)
     teleop_sub = rospy.Subscriber('/dvrk/footpedals/coag', Joy, teleop_callback)
@@ -352,7 +354,7 @@ def main():
     num_test_trials = 3
 
     # ref_force_array_train = np.array([1,1.5,2.5,4,6])
-    ref_force_array_train = np.array([1, 1.5, 2.5, 4, 5.5])
+    ref_force_array_train = np.array([1, 2.5, 5.5, 4, 1.5])
     ref_force_array_test = np.array([0.75, 2, 3, 4.5, 6])
     # ref_force_array_test = np.array([2,3,4.5,5.5,8])
     ref_force_train = populate_training(ref_force_array_train, num_training_trials)
@@ -392,6 +394,12 @@ def main():
                 exiter = True
                 break
 
+            if trial_num == break_trial:
+                continue_flag = False
+                while continue_flag != 1:
+                    continue_flag = input("Break Time. Once ready, enter 1 to continue")
+
+
             print('Starting Trial for Training, No Haptics, Trial No. ' + str(trial_num))
 
             while flag_next == False:
@@ -408,9 +416,6 @@ def main():
 
                 rate.sleep()
 
-
-
-
             # END OF WHILE LOOP
 
         '''Training Phase with Haptics'''
@@ -421,6 +426,11 @@ def main():
             if trial_num == len(ref_force_train)+1:
                 exiter = True
                 break
+
+            if trial_num == break_trial:
+                continue_flag = False
+                while continue_flag != 1:
+                    continue_flag = input("Break Time. Once ready, enter 1 to continue")
 
             print('Starting Trial for Training, with Haptics, Trial No. ' + str(trial_num))
 
