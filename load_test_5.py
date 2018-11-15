@@ -109,77 +109,79 @@ if __name__ == "__main__":
 
     pos = get_cartesian(pose)
     data = np.hstack((ref_displacement, count, time, pos, wrench))
+    
+    for y in range(1,15):
+    
+        for ref_displacement in ref_displacement_array:
 
-    for ref_displacement in ref_displacement_array:
+            for count in range(1, 2):
 
-        for count in range(1, 30):
+                print 'homing to position...'
 
-            print 'homing to position...'
+                p2.move(PSM_pose)
+                p2.close_jaw();
+                rospy.sleep(2)
+                zero_forces(p2,0.05)
 
-            p2.move(PSM_pose)
-            p2.close_jaw();
-            rospy.sleep(2)
-            zero_forces(p2,0.05)
+                time_start = rospy.get_time()
 
-            time_start = rospy.get_time()
+                x_0 = p2.get_current_position()
+                print(x_0.p.x())
+                #target_displacement =  x_0.p.x() - ref_displacement
+                target_displacement = ref_displacement
+                time_for_stretch = target_displacement * 100
+                delta_displacement = -(target_displacement / time_for_stretch) * 1 / 30
+                translation = PyKDL.Vector(delta_displacement, 0.0, 0.0)
+                translation2 = PyKDL.Vector(-delta_displacement, 0.0, 0.0)
 
-            x_0 = p2.get_current_position()
-            print(x_0.p.x())
-            #target_displacement =  x_0.p.x() - ref_displacement
-            target_displacement = ref_displacement
-            time_for_stretch = target_displacement * 100
-            delta_displacement = -(target_displacement / time_for_stretch) * 1 / 30
-            translation = PyKDL.Vector(delta_displacement, 0.0, 0.0)
-            translation2 = PyKDL.Vector(-delta_displacement, 0.0, 0.0)
+                print 'performing stretch test ' + str(target_displacement) + ' iteration number ' + str(count)
+                print 'displacement rate= ' + str(target_displacement / time_for_stretch) + ' m/s'
 
-            print 'performing stretch test ' + str(target_displacement) + ' iteration number ' + str(count)
-            print 'displacement rate= ' + str(target_displacement / time_for_stretch) + ' m/s'
+                # move to the correct start loading position
 
-            # move to the correct start loading position
+                total_displacement = 0
+                initial_position = pose.p.x()
 
-            total_displacement = 0
-            initial_position = pose.p.x()
+                # stretch portion
+                while total_displacement < target_displacement:
+                    p2.dmove(translation)
 
-            # stretch portion
-            while total_displacement < target_displacement:
-                p2.dmove(translation)
+                    time = rospy.get_time() - time_start
+                    pose = p2.get_current_position()
+                    wrench = force_feedback
 
-                time = rospy.get_time() - time_start
-                pose = p2.get_current_position()
-                wrench = force_feedback
+                    pos = get_cartesian(pose)
+                    new_data = np.hstack((ref_displacement, count, time, pos, wrench))
+                    data = np.vstack((data, new_data))
 
-                pos = get_cartesian(pose)
-                new_data = np.hstack((ref_displacement, count, time, pos, wrench))
-                data = np.vstack((data, new_data))
-
-                total_displacement = initial_position - pose.p.x()
+                    total_displacement = initial_position - pose.p.x()
 
 
-            print('returning...')
-            print('total displacement : ' + str(total_displacement))
-            print('force level : ' + str(force_feedback[0]))
-            total_displacement = 0  # reset our counter
-            initial_position = pose.p.x()
+                print('returning...')
+                print('total displacement : ' + str(total_displacement))
+                print('force level : ' + str(force_feedback[0]))
+                total_displacement = 0  # reset our counter
+                initial_position = pose.p.x()
 
-            # return portion
-            while total_displacement < target_displacement:
-                p2.dmove(translation2)
+                # return portion
+                while total_displacement < target_displacement:
+                    p2.dmove(translation2)
 
-                time = rospy.get_time() - time_start
-                pose = p2.get_current_position()
-                twist = p2.get_current_twist_body()
-                wrench = force_feedback
+                    time = rospy.get_time() - time_start
+                    pose = p2.get_current_position()
+                    twist = p2.get_current_twist_body()
+                    wrench = force_feedback
 
-                pos = get_cartesian(pose)
+                    pos = get_cartesian(pose)
 
-                new_data = np.hstack((ref_displacement, count, time, pos, wrench))
-                data = np.vstack((data, new_data))
+                    new_data = np.hstack((ref_displacement, count, time, pos, wrench))
+                    data = np.vstack((data, new_data))
 
-                total_displacement = pose.p.x() - initial_position
+                    total_displacement = pose.p.x() - initial_position
 
-            rospy.sleep(0.5)
+                rospy.sleep(0.5)
 
-            print 'test done'
-            print '\n'
-            print 'saving ' + filename + '...'
-            np.savetxt(filename, data, delimiter=',', fmt='%.4f')
+                print 'test done'
+                print '\n'
+                print 'saving ' + filename + '...'
+                np.savetxt(filename, data, delimiter=',', fmt='%.4f')

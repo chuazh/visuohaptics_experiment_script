@@ -335,7 +335,7 @@ def main():
     trial_num = input('Key in the trial number you want to start from: ')
     trial_num = trial_num-1
 
-    break_trial = 90
+    break_trial = 30
 
     # create the subscriber to check the footpedals
     sub = rospy.Subscriber('/dvrk/footpedals/camera', Joy, trigger_callback)
@@ -394,10 +394,10 @@ def main():
                 exiter = True
                 break
 
-            if trial_num == break_trial:
+            if (trial_num)%break_trial==1 and trial_num>break_trial:
                 continue_flag = False
                 while continue_flag != 1:
-                    continue_flag = input("Break Time. Once ready, enter 1 to continue")
+                    continue_flag = input("Break Time. Once ready, enter 1 to continue: ")
 
 
             print('Starting Trial for Training, No Haptics, Trial No. ' + str(trial_num))
@@ -427,10 +427,10 @@ def main():
                 exiter = True
                 break
 
-            if trial_num == break_trial:
+            if (trial_num)%break_trial==1 and trial_num>break_trial:
                 continue_flag = False
                 while continue_flag != 1:
-                    continue_flag = input("Break Time. Once ready, enter 1 to continue")
+                    continue_flag = input("Break Time. Once ready, enter 1 to continue: ")
 
             print('Starting Trial for Training, with Haptics, Trial No. ' + str(trial_num))
 

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import rospy
 import dvrk
 import numpy as np
