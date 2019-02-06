@@ -37,6 +37,15 @@ def get_pose(frame):
 
     return output
 
+def load_manipulator_pose(filename):
+    data = np.loadtxt(filename, delimiter=',')
+    Rot = PyKDL.Rotation()
+    Rot = Rot.Quaternion(data[3], data[4], data[5], data[6])
+    Pos = PyKDL.Vector(data[0], data[1], data[2])
+    Frame = PyKDL.Frame(Rot, Pos)
+
+    return Frame
+
 def zero_forces(PSM,epsilon):
     home = False
     Kp = 0.007
@@ -66,10 +75,7 @@ if __name__ == "__main__":
 
     """ MTM home rough position """
     ''' We use this to initialize a position for the MTMR'''
-    MTMR_cart = PyKDL.Vector(0.055288515671, -0.0508310176185, -0.0659661913251)
-    MTMR_rot = PyKDL.Rotation()
-    MTMR_rot = MTMR_rot.Quaternion(0.750403138242, -0.0111643539824, 0.657383142871, -0.0679550644629)
-    MTMR_pos = PyKDL.Frame(MTMR_rot, MTMR_cart)
+    MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home.txt')
 
     c = dvrk.console()
     p2 = dvrk.psm('PSM2')

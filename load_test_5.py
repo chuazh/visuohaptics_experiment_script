@@ -110,7 +110,7 @@ if __name__ == "__main__":
     pos = get_cartesian(pose)
     data = np.hstack((ref_displacement, count, time, pos, wrench))
     
-    for y in range(1,15):
+    for y in range(1,3):
     
         for ref_displacement in ref_displacement_array:
 

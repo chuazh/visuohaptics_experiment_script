@@ -291,6 +291,7 @@ class arm_capture_obj:
 
 """-------------PLEASE PRE-CONFIGURE THESE BEFORE DOING EXPERIMENTS--------------------"""
 '''
+DEPRACATED
 """ MTM home position """
 MTMR_cart = PyKDL.Vector(0.055288515671, -0.0508310176185, -0.0659661913251)
 MTMR_rot = PyKDL.Rotation()
@@ -400,7 +401,7 @@ def main():
                     continue_flag = input("Break Time. Once ready, enter 1 to continue: ")
 
 
-            print('Starting Trial for Training, No Haptics, Trial No. ' + str(trial_num))
+            print('Starting Trial for Training, No Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]))
 
             while flag_next == False:
 
@@ -409,10 +410,14 @@ def main():
 
                 if time > 0.5 and flag_next == False and trigger == True:
                     flag_next = True
-                    if trial_num < len(ref_force_test):
+                    if trial_num < len(ref_force_train):
                         message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force,
                                                   trial_num,'force_bounds.csv')
                         message_pub.publish(message)
+                    else:
+                        message = post_trial_feedback(ref_force_train[trial_num - 1], 0, force,
+                                                  trial_num,'force_bounds.csv')
+                        message_pub.publish(message)                    
 
                 rate.sleep()
 
@@ -432,7 +437,7 @@ def main():
                 while continue_flag != 1:
                     continue_flag = input("Break Time. Once ready, enter 1 to continue: ")
 
-            print('Starting Trial for Training, with Haptics, Trial No. ' + str(trial_num))
+            print('Starting Trial for Training, with Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]) )
 
             while flag_next == False:
 
@@ -446,7 +451,11 @@ def main():
                     if trial_num < len(ref_force_train):
                         message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv')
                         message_pub.publish(message)
-
+                    else:
+                        message = post_trial_feedback(ref_force_train[trial_num - 1], 0, force,
+                                                  trial_num,'force_bounds.csv')
+                        message_pub.publish(message) 
+                        
                 rate.sleep()
 
 
@@ -465,9 +474,9 @@ def main():
                 break
 
             if file_data[1] == 1:
-                print('Starting Trial for Test, Training with Haptics, Trial No. ' + str(trial_num))
+                print('Starting Trial for Test, Training with Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
             else:
-                print('Starting Trial for Test, Training with no Haptics, Trial No. ' + str(trial_num))
+                print('Starting Trial for Test, Training with no Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
 
             while flag_next == False:
 

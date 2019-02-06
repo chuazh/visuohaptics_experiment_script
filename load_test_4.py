@@ -87,9 +87,9 @@ if __name__ == "__main__":
 
     # ref_displacement_array = np.array([0.002786,0.00615,0.008032,0.01015,0.01488,0.019,0.02104,0.02621,0.02885,0.03334])
     # ref_displacement_array = np.array([0.128903083704,0.107929114901,0.0934401071415,0.085339802604,0.0806550459682,0.0772358149271])
-    #ref_displacement_array = np.array([0.01,0.02,0.03,0.04,0.045])
+    ref_displacement_array = np.array([0.01,0.02,0.03,0.04,0.045])
     #ref_displacement_array = np.array([0.008,0.025,0.031,0.035,0.042])
-    ref_displacement_array = np.array([0.025,0.031,0.035,0.042])
+    #ref_displacement_array = np.array([0.025,0.031,0.035,0.042])
     #ref_displacement_array = np.array([0.03])
     # set our rate to 1000hz
     rate = rospy.Rate(1000)
@@ -112,7 +112,7 @@ if __name__ == "__main__":
 
     for ref_displacement in ref_displacement_array:
 
-        for count in range(1, 30):
+        for count in range(1, 3):
 
             print 'homing to position...'
 
