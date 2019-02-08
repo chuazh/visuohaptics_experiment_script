@@ -2,15 +2,18 @@
 
 import socket
 import rospy
-from geometry_msgs.msg import Vector3, Quaternion, Wrench
+from geometry_msgs.msg import Vector3, Quaternion, Wrench, Pose
 
 HOST = '192.168.1.5'
 PORT = 27015
 
-data = Wrench()
+Fdata = Wrench()
+Pdata = Pose()
 
 rospy.init_node('force_sensor')
-pub = rospy.Publisher('force_sensor', Wrench, queue_size=10)
+Fpub = rospy.Publisher('force_sensor', Wrench, queue_size=10)
+Ppub = rospy.Publisher('ep_pose', Pose, queue_size=10)
+
 rate = rospy.Rate(60)
 
 
@@ -23,18 +26,34 @@ s.connect((HOST,PORT))
 print 'connected!'
 
 while True:
-	x = s.recv(7)
-	y = s.recv(7)
-	z = s.recv(7)
-	
-	data.force.x = float(x)
-	data.force.y = float(y)
-	data.force.z = float(z)
-	data.torque.x = 0
-	data.torque.y = 0 
-	data.torque.z = 0
+	fx = s.recv(7)
+	fy = s.recv(7)
+	fz = s.recv(7)
+	px = s.recv(7)
+	py = s.recv(7)
+	pz = s.recv(7)
+	q1 = s.recv(7)
+	q2 = s.recv(7)
+	q3 = s.recv(7)
+	q4 = s.recv(7)
 
-	pub.publish(data)
+	Fdata.force.x = float(fx)
+	Fdata.force.y = float(fy)
+	Fdata.force.z = float(fz)
+	Fdata.torque.x = 0
+	Fdata.torque.y = 0
+	Fdata.torque.z = 0
+
+	Pdata.position.x = float(px)
+	Pdata.position.y = float(py)
+	Pdata.position.z = float(pz)
+	Pdata.orientation.x = float(q1)
+	Pdata.orientation.y = float(q2)
+	Pdata.orientation.z = float(q3)
+	Pdata.orientation.w = float(q4)
+
+	Fpub.publish(Fdata)
+	Ppub.publish(Pdata)
 	rate.sleep()
 
 s.close()
