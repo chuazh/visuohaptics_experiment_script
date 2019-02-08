@@ -22,6 +22,12 @@ from std_msgs.msg import String, Bool
 import numpy.matlib as npm
 
 def trigger_callback(data):
+    '''
+    Callback function for the utility footpedal that helps advance the experiment progression
+    Input : data (ROS joystick message)
+    Output : no real output, but trigger is a global boolean variable that toggles
+    '''
+
     global trigger
     butt = data.buttons[0]
     if butt > 0.5:
@@ -32,6 +38,12 @@ def trigger_callback(data):
 
 
 def teleop_callback(data):
+    '''
+    The callback function for the teleoperation pedal
+    Input : data (ROS joystick message)
+    Output: teleop is a global boolean variable that toggles
+    '''
+
     global teleop
     butt = data.buttons[0]
     if butt > 0.5:
@@ -41,6 +53,11 @@ def teleop_callback(data):
 
 
 def haptic_feedback(data):
+    '''
+    Input: data (ROS force message)
+    Output: force_feedback is a global variable that gets updated when the callback function is executed by the subscriber
+    '''
+
     global force_feedback
     force_feedback = [0, 0, 0]
     force_feedback[0] = data.force.x
@@ -49,7 +66,10 @@ def haptic_feedback(data):
 
 
 def collect_filename():
-    # This function collects the relevant parameters for our experiment
+    '''
+    This function collects the relevant parameters for our experiment
+    It returns a numpy array of the subject number, the condition being tested, the training or test indicator, and the material
+    '''
 
     subj = input("Please key in subject number: ")
     print '\n'
@@ -66,7 +86,12 @@ def collect_filename():
 
 
 def populate_training(force_array, num_trials):
-    # This function populates a training sequence of forces based on the forces specified in the force_array with a multiple of num_trials for each
+    '''
+    This function populates a training sequence of forces based on the forces specified in the force_array with a multiple of num_trials for each
+    Input : force_array (1xN list) , num_trials (positive integer)
+    Output: force_array_seq (1x(N*num_trials) list)
+    '''
+
     force_array_seq = np.zeros(num_trials * len(force_array))
     idx = 0
     for i in range(num_trials * len(force_array)):
@@ -78,8 +103,12 @@ def populate_training(force_array, num_trials):
 
 
 def populate_and_randomize_test(force_array, num_trials):
-    # This function populates a test sequence of forces based on the forces specified in force_array with multiples of num_trials.
-    # The function shuffles the sequence of forces and makes sure that no test forces is repeated back to back.
+    '''
+    This function populates a test sequence of forces based on the forces specified in force_array with multiples of num_trials.
+    The function shuffles the sequence of forces and makes sure that no test forces is repeated back to back.
+    Input: force_array (1xN list) , num_trials (integer)
+    Output: force_array_seq (1x(N*num_trials) list)
+    '''
 
     force_array_seq = np.zeros(num_trials * len(force_array))
     idx = 0
@@ -107,8 +136,12 @@ def populate_and_randomize_test(force_array, num_trials):
 
 
 def post_trial_feedback(ref_force_current, ref_force_next, act_force, trial_num,feedback_file):
-    # This function takes in the current reference force and compares it to the actual force exerted by the user.
-    # the feedback_file contains the data for the upper and lower error bounds what is considered a "successful" trial
+    '''
+    This function takes in the current reference force and compares it to the actual force exerted by the user.
+    the feedback_file contains the data for the upper and lower error bounds what is considered a "successful" trial
+    Input: ref_force_current (double), ref_force_next (double), act_force (double) , trial_num (int) , feedback_file (string)
+    Output: msg (ROS message as a string)
+    '''
 
     force_array = np.loadtxt(feedback_file,delimiter=',')
     upper_bounds = force_array[1,:]
@@ -134,6 +167,12 @@ def post_trial_feedback(ref_force_current, ref_force_next, act_force, trial_num,
     return msg
 
 def load_manipulator_pose(filename):
+    '''
+    This function loads a PyKDL pose from a text file
+    Input: filename (string)
+    Output: Frame (pyKDL pose)
+    '''
+
     data = np.loadtxt(filename,delimiter=',')
     Rot = PyKDL.Rotation()
     Rot = Rot.Quaternion(data[3], data[4], data[5], data[6])
@@ -143,6 +182,8 @@ def load_manipulator_pose(filename):
     return Frame
 
 class arm_capture_obj:
+    '''Object that intializes the manipulators and contains methods for commanding them and recording data'''
+
     def __init__(self, subj_data):
 
         self.p2 = dvrk.psm('PSM2')
@@ -176,13 +217,21 @@ class arm_capture_obj:
         self.name = filename
 
     def set_home_MTM(self, pykdlframe):
+        '''
+        assigns the mtm seed position for home location
+        Input: pykdlframe (pyKDL frame)
+        '''
         self.MTMR_pos = pykdlframe
 
     def set_home_PSM(self, pykdlframe):
+        '''
+        assigns the psm seed position for home location
+        Input: pykdlframe (pyKDL frame)
+        '''
         self.PSM_pos = pykdlframe
 
     def home_all(self):
-        # home the MTMs and PSMs
+        ''' home the MTMs and PSMs'''
         self.c.teleop_stop()
         print("homing MTM and PSM")
         self.p2.close_jaw()
@@ -195,6 +244,12 @@ class arm_capture_obj:
         self.c.teleop_start()
 
     def get_cartesian(self, pose):
+        '''
+        Takes a pyKDL pose and parses it into cartesian position
+        Input: pose (pyKDL pose)
+        Output: output (1x3 np array)
+        '''
+
         position = pose.p
         x = position.x()
         y = position.y()
@@ -203,6 +258,12 @@ class arm_capture_obj:
         return output
 
     def init_data(self, forcefeedback, trial_num):
+        '''
+        Initialize our data frame
+        Input : forcefeedback (1x3 list) , trial_num (int)
+        Output: void
+        '''
+
         self.pose_current = self.p2.get_current_position()
         self.pose_desired = self.p2.get_desired_position()
         self.wrench = self.p2.get_current_wrench_body()
@@ -216,6 +277,12 @@ class arm_capture_obj:
         self.data = np.hstack((trial_num, self.ref_force, self.time, self.pos_current, self.pos_desired, self.wrench, self.force))
 
     def record_data(self, forcefeedback, ref_force, trial_num):
+        '''
+        Records data of manipulator pose, experiment conditions and force feedback into an array
+        Input : forcefeedback (1x3 list), ref_force (double), trial_num (int)
+        Output: returns time? why?
+        '''
+
         self.pose_current = self.p2.get_current_position()
         self.pose_desired = self.p2.get_desired_position()
         self.wrench = self.p2.get_current_wrench_body()
