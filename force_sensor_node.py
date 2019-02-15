@@ -3,6 +3,7 @@
 import socket
 import rospy
 from geometry_msgs.msg import Vector3, Quaternion, Wrench, Pose
+import os
 
 HOST = '192.168.1.5'
 PORT = 27015
@@ -14,7 +15,7 @@ rospy.init_node('force_sensor')
 Fpub = rospy.Publisher('force_sensor', Wrench, queue_size=10)
 Ppub = rospy.Publisher('ep_pose', Pose, queue_size=10)
 
-rate = rospy.Rate(60)
+rate = rospy.Rate(1000)
 
 
 print 'initializing ROS node...'
@@ -25,7 +26,12 @@ s.connect((HOST,PORT))
 
 print 'connected!'
 
+old_time = 0
+
 while True:
+	time = rospy.get_time()
+	fs = 1/(time-old_time)
+
 	fx = s.recv(7)
 	fy = s.recv(7)
 	fz = s.recv(7)
@@ -55,6 +61,7 @@ while True:
 	Fpub.publish(Fdata)
 	Ppub.publish(Pdata)
 	rate.sleep()
+	old_time = time
 
 s.close()
 

@@ -17,7 +17,7 @@ import signal
 import PyKDL
 import os
 from sensor_msgs.msg import Joy
-from geometry_msgs.msg import Vector3, Quaternion, Wrench
+from geometry_msgs.msg import Vector3, Quaternion, Wrench, Pose
 from std_msgs.msg import String, Bool
 import numpy.matlib as npm
 
@@ -60,9 +60,30 @@ def haptic_feedback(data):
 
     global force_feedback
     force_feedback = [0, 0, 0]
+    '''
     force_feedback[0] = data.force.x
     force_feedback[1] = data.force.y
     force_feedback[2] = -data.force.z
+    '''
+    force_feedback[1] = -data.force.x
+    force_feedback[2] = data.force.y
+    force_feedback[0] = data.force.z
+
+def EP_pose(data):
+    '''
+    Input: data (ROS pose message)
+    Output: ep_pose is a global variable that gets updated when the callback function is executed by the subscriber
+    '''
+
+    global ep_pose
+    ep_pose = [0,0,0,0,0,0,0]
+    ep_pose[0] = data.position.x
+    ep_pose[1] = data.position.y
+    ep_pose[2] = data.position.z
+    ep_pose[3] = data.orientation.x
+    ep_pose[4] = data.orientation.y
+    ep_pose[5] = data.orientation.z
+    ep_pose[6] = data.orientation.w
 
 
 def collect_filename():
@@ -74,7 +95,7 @@ def collect_filename():
     subj = input("Please key in subject number: ")
     print '\n'
 
-    haptic = input("Please enter 0 for no haptic condition and 1 for haptics: ")
+    haptic = input("Please enter 0 for no haptic condition, 1 for haptics, 2 for manual haptics: ")
     print '\n'
 
     test = input("Please enter 0 for training and 1 for test: ")
@@ -181,6 +202,7 @@ def load_manipulator_pose(filename):
 
     return Frame
 
+
 class arm_capture_obj:
     '''Object that intializes the manipulators and contains methods for commanding them and recording data'''
 
@@ -196,9 +218,11 @@ class arm_capture_obj:
         filename = 'Subj' + str(subj_data[0])
 
         if subj_data[1] == 0:
-            filename = filename + '_nohaptic'
-        else:
+            filename = filename + '_nohaptics'
+        elif subj_data[1] == 1:
             filename = filename + '_haptics'
+        else:
+            filename = filename + '_manual'
 
         if subj_data[2] == 0:
             filename = filename + '_train'
@@ -257,7 +281,7 @@ class arm_capture_obj:
         output = np.array([x, y, z])
         return output
 
-    def init_data(self, forcefeedback, trial_num):
+    def init_data(self, forcefeedback, EPpose, trial_num):
         '''
         Initialize our data frame
         Input : forcefeedback (1x3 list) , trial_num (int)
@@ -272,11 +296,13 @@ class arm_capture_obj:
         self.time = rospy.get_time() - self.time_start
         self.pos_current = self.get_cartesian(self.pose_current)
         self.pos_desired = self.get_cartesian(self.pose_desired)
+        self.pose_ep = EPpose
         self.ref_force = 0
         self.trial_num = trial_num
-        self.data = np.hstack((trial_num, self.ref_force, self.time, self.pos_current, self.pos_desired, self.wrench, self.force))
 
-    def record_data(self, forcefeedback, ref_force, trial_num):
+        self.data = np.hstack((trial_num, self.ref_force, self.time, self.pose_ep, self.pos_current, self.pos_desired, self.wrench, self.force))
+
+    def record_data(self, forcefeedback, EPpose, ref_force, trial_num):
         '''
         Records data of manipulator pose, experiment conditions and force feedback into an array
         Input : forcefeedback (1x3 list), ref_force (double), trial_num (int)
@@ -290,10 +316,11 @@ class arm_capture_obj:
         self.time = rospy.get_time() - self.time_start
         self.pos_current = self.get_cartesian(self.pose_current)
         self.pos_desired = self.get_cartesian(self.pose_desired)
+        self.pose_ep = EPpose
         self.ref_force = ref_force
         self.trial_num = trial_num
         new_data = np.hstack(
-            (self.trial_num, self.ref_force, self.time, self.pos_current, self.pos_desired, self.wrench, self.force))
+            (self.trial_num, self.ref_force, self.time, self.pose_ep, self.pos_current, self.pos_desired, self.wrench, self.force))
 
         # print(new_data)
         # os.system('clear')
@@ -363,6 +390,120 @@ class arm_capture_obj:
                 print(F_average)
                 home = True
 
+class console_capture_obj:
+
+    def __init__(self, subj_data):
+
+        self.c = dvrk.console()
+
+        filename = 'Subj' + str(subj_data[0])
+
+        if subj_data[1] == 0:
+            filename = filename + '_nohaptics'
+        elif subj_data[1] == 1:
+            filename = filename + '_haptics'
+        else:
+            filename = filename + '_manual'
+
+        if subj_data[2] == 0:
+            filename = filename + '_train'
+        else:
+            filename = filename + '_test'
+        if subj_data[3] == 0:
+            filename = filename + '_ef50'
+        elif subj_data[3] == 1:
+            filename = filename + '_ds10'
+        elif subj_data[3] == 2:
+            filename = filename + '_ef30'
+        else:
+            filename = filename + '_ds30'
+
+        self.name = filename
+        self.action_complete = False
+
+    def init_data(self, forcefeedback, EPpose, trial_num):
+        '''
+        Initialize our data frame
+        Input : forcefeedback (1x3 list) , trial_num (int)
+        Output: void
+        '''
+
+        self.wrench = np.zeros(6)
+        self.force = forcefeedback
+        self.time_start = rospy.get_time()  # this re-initializes the start time for each trial
+        self.time = rospy.get_time() - self.time_start
+        self.pos_current = np.zeros(3)
+        self.pos_desired = np.zeros(3)
+        self.pose_ep = EPpose
+        self.ref_force = 0
+        self.trial_num = trial_num
+
+        self.data = np.hstack((trial_num, self.ref_force, self.time, self.pose_ep, self.pos_current, self.pos_desired, self.wrench, self.force))
+
+    def record_data(self, forcefeedback, EPpose, ref_force, trial_num):
+        '''
+        Records data of manipulator pose, experiment conditions and force feedback into an array
+        Input : forcefeedback (1x3 list), ref_force (double), trial_num (int)
+        Output: returns time? why?
+        '''
+
+        self.wrench = np.zeros(6)
+        self.force = forcefeedback
+        self.time = rospy.get_time() - self.time_start
+        self.pos_current = np.zeros(3)
+        self.pos_desired = np.zeros(3)
+        self.pose_ep = EPpose
+        self.ref_force = ref_force
+        self.trial_num = trial_num
+        new_data = np.hstack(
+            (self.trial_num, self.ref_force, self.time, self.pose_ep, self.pos_current, self.pos_desired, self.wrench, self.force))
+
+        # print(new_data)
+        # os.system('clear')
+
+        self.data = np.vstack((self.data, new_data))
+
+        return self.time
+
+    def save_data(self):
+        '''This method just overwrites the old file with the updated data.
+        It should be called after every trial as this way we don't lose any data.'''
+        save_filename = self.name + '.csv'
+        print ('saving ' + save_filename + '...')
+        np.savetxt(save_filename, self.data, delimiter=',', fmt='%.4f')
+
+    def zero_force_manually(self,epsilon):
+        home = False
+
+        F_old = force_feedback
+
+        F_array = npm.repmat(force_feedback,10,1)
+
+        while home == False:
+            Fx = force_feedback[0]
+            Fy = force_feedback[1]
+            Fz = force_feedback[2]
+            Fx_d = Fx-F_old[0]
+            Fy_d = Fy-F_old[1]
+            Fz_d = Fz-F_old[2]
+
+            F_old = [Fx,Fy,Fz]
+
+            F_array[0,:] = force_feedback
+            F_array[1,:] = F_old
+            F_array[2:-1,:] = F_array[1:-2,:]
+
+            #F_average = (np.array(force_feedback) + np.array(F_old)+ np.array(F1)+np.array(F2)+np.array(F3)+np.array(F4))/6
+            F_median = np.median(F_array,0)
+            F_average = np.mean(F_array,0)
+
+            if np.linalg.norm(F_median)>epsilon:
+                pass
+            else:
+                print(F_median)
+                print(F_average)
+                home = True
+
 
 """-------------PLEASE PRE-CONFIGURE THESE BEFORE DOING EXPERIMENTS--------------------"""
 '''
@@ -389,7 +530,7 @@ teleop = False  # teleoperation flag
 flag_next = False  # create a flag variable to indicate moving to the next trial (this helps with debouncing)
 
 force_feedback = [0, 0, 0]  # initialize our force_feedback variable
-
+ep_pose = [0,0,0,0,0,0,0]
 
 def main():
     '''MAIN ROUTINE'''
@@ -397,18 +538,21 @@ def main():
     exiter = False  # exit the loop flag
 
     # collect the filename parameters to initialize the save function in the arm_capture_obj class
-    file_data = collect_filename()
-    # file_data = np.array([1,1,0,1])
+    #file_data = collect_filename()
+    file_data = np.array([1,2,0,1])
 
-    # initialize our arm_object
-    dvrk_right = arm_capture_obj(file_data)
+    if file_data[1] == 2:
+        dvrk_right = console_capture_obj(file_data)
+    else:
+        # initialize our arm_object
+        dvrk_right = arm_capture_obj(file_data)
 
     # set our script rate
     rate = rospy.Rate(1000)
 
     # initialize trial number
-    #trial_num = 0
-    trial_num = input('Key in the trial number you want to start from: ')
+    trial_num = 1
+    #trial_num = input('Key in the trial number you want to start from: ')
     trial_num = trial_num-1
 
     break_trial = 30
@@ -417,14 +561,16 @@ def main():
     sub = rospy.Subscriber('/dvrk/footpedals/camera', Joy, trigger_callback)
     teleop_sub = rospy.Subscriber('/dvrk/footpedals/coag', Joy, teleop_callback)
     force_sub = rospy.Subscriber('/force_sensor', Wrench, haptic_feedback)
+    ep_sub = rospy.Subscriber('/ep_pose', Pose, EP_pose)
     message_pub = rospy.Publisher('force_msg', String, queue_size=10)
     cam_reset_pub = rospy.Publisher('cam_reset', Bool, queue_size=10)
 
-    PSM_pos = load_manipulator_pose('./manipulator_homing/psm_home.txt')
-    MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home.txt')
-
-    dvrk_right.set_home_MTM(MTMR_pos)
-    dvrk_right.set_home_PSM(PSM_pos)
+    if file_data[1] == 0 or file_data[1] == 1:
+        PSM_pos = load_manipulator_pose('./manipulator_homing/psm_home.txt')
+        MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home.txt')
+        dvrk_right.set_home_MTM(MTMR_pos)
+        dvrk_right.set_home_PSM(PSM_pos)
+        dvrk_right.m2.set_wrench_body_orientation_absolute(True)
 
     num_training_trials = 30
     num_test_trials = 3
@@ -440,21 +586,24 @@ def main():
     print(ref_force_test)
 
     force = [0, 0, 0]  # hardset the forces to 0
-
-    dvrk_right.m2.set_wrench_body_orientation_absolute(True)
-
-    dvrk_right.init_data(force, trial_num)
+    EPpose = [0,0,0,0,0,0,0]
+    dvrk_right.init_data(force,EPpose, trial_num)
 
     while exiter == False:
 
         trial_num += 1  # increment our trial num
         flag_next = False  # reset our flag next
 
-        print('Homing manipulators... \n')
-        dvrk_right.home_all()
+        if file_data[1] == 0 or file_data[1] == 1 : # only do auto homing if the experiment condition is teleoperated
+            print('Homing manipulators... \n')
+            dvrk_right.home_all()
 
-        while dvrk_right.action_complete == False:
-            print(dvrk_right.action_complete)
+            while dvrk_right.action_complete == False:
+                print(dvrk_right.action_complete)
+        else:
+            print('Waiting for user to reset...\n')
+            dvrk_right.zero_force_manually(0.01) # this epsilon needs to be tuned for manual ability
+            dvrk_right.action_complete = True
 
         print('Homing Complete: ' + str(dvrk_right.action_complete))
         cam_reset_pub.publish(True)
@@ -481,7 +630,8 @@ def main():
             while flag_next == False:
 
                 force = force_feedback  # use the force feedback
-                time = dvrk_right.record_data(force, ref_force_train[trial_num - 1], trial_num)
+                EPpose = ep_pose
+                time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
 
                 if time > 0.5 and flag_next == False and trigger == True:
                     flag_next = True
@@ -517,9 +667,10 @@ def main():
             while flag_next == False:
 
                 force = force_feedback  # use the force feedback
+                EPpose = ep_pose
 
                 dvrk_right.render_force_feedback(force, teleop)
-                time = dvrk_right.record_data(force, ref_force_train[trial_num - 1], trial_num)
+                time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
 
                 if time > 0.5 and flag_next == False and trigger == True:
                     flag_next = True
@@ -533,9 +684,41 @@ def main():
                         
                 rate.sleep()
 
+            # END OF WHILE LOOP
 
+        '''Training Phase with Manual Haptics'''
+        if file_data[1] == 2 and file_data[2] == 0:
 
+            # check if we are at the end of our test condition and if we are we flip the exiter flag
+            if trial_num == len(ref_force_train)+1:
+                exiter = True
+                break
 
+            if (trial_num)%break_trial==1 and trial_num>break_trial:
+                continue_flag = False
+                while continue_flag != 1:
+                    continue_flag = input("Break Time. Once ready, enter 1 to continue: ")
+
+            print('Starting Trial for Training, with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]) )
+
+            while flag_next == False:
+
+                force = force_feedback  # use the force feedback
+                EPpose = ep_pose
+
+                time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
+
+                if time > 0.5 and flag_next == False and trigger == True:
+                    flag_next = True
+                    if trial_num < len(ref_force_train):
+                        message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv')
+                        message_pub.publish(message)
+                    else:
+                        message = post_trial_feedback(ref_force_train[trial_num - 1], 0, force,
+                                                  trial_num,'force_bounds.csv')
+                        message_pub.publish(message)
+
+                rate.sleep()
 
             # END OF WHILE LOOP
 
@@ -550,13 +733,16 @@ def main():
 
             if file_data[1] == 1:
                 print('Starting Trial for Test, Training with Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
-            else:
+            elif file_data[1] == 2:
                 print('Starting Trial for Test, Training with no Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
+            else:
+                print('Starting Trial for Test, Training with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
 
             while flag_next == False:
 
                 force = force_feedback  # use the force feedback
-                time = dvrk_right.record_data(force, ref_force_test[trial_num - 1], trial_num)
+                EPpose = ep_pose
+                time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
 
                 if time > 0.5 and flag_next == False and trigger == True:
                     flag_next = True
@@ -565,8 +751,6 @@ def main():
                         message_pub.publish(message)
 
                 rate.sleep()
-
-
 
             # END OF WHILE LOOP
 
