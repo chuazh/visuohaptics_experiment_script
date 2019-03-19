@@ -17,14 +17,17 @@ import numpy as np
 import signal
 import PyKDL
 from sensor_msgs.msg import Joy
-from geometry_msgs.msg import Vector3, Quaternion, Wrench
+from geometry_msgs.msg import Vector3, Quaternion, Wrench, Pose
+import numpy.matlib as npm
 
 def zero_forces(PSM,epsilon):
     home = False
-    Kp = 0.007
-    Kd = 0.005
-
+    Kp = 0.005
+    Kd = 0.003
+    
     F_old = force_feedback
+
+    F_array = npm.repmat(force_feedback,10,1)
 
     while home == False:
 
@@ -34,22 +37,50 @@ def zero_forces(PSM,epsilon):
         Fx_d = Fx-F_old[0]
         Fy_d = Fy-F_old[1]
         Fz_d = Fz-F_old[2]
+
         F_old = [Fx,Fy,Fz]
 
-        if np.linalg.norm(force_feedback)>epsilon:
-            PSM.dmove(PyKDL.Vector(Kp*Fx+Kd*Fx_d, Kp*Fz+Kd*Fz_d, -(Kp*Fy+Kd*Fy_d)))
+        F_array[0,:] = force_feedback
+        F_array[1,:] = F_old
+        F_array[2:-1,:] = F_array[1:-2,:]
+
+        #F_average = (np.array(force_feedback) + np.array(F_old)+ np.array(F1)+np.array(F2)+np.array(F3)+np.array(F4))/6
+        F_median = np.median(F_array,0)
+        F_average = np.mean(F_array,0)
+
+        if np.linalg.norm(F_median)>epsilon:
+            p2.dmove(PyKDL.Vector(Kp*Fx+Kd*Fx_d, Kp*Fy+Kd*Fy_d, Kp*Fz+Kd*Fz_d))
+            #print(np.linalg.norm(F_median))
             #print(np.linalg.norm(force_feedback))
+            #print(force_feedback)
             #print(str(Kp*Fx+Kd*Fx_d) + ',' +str(Kp*Fy+Kd*Fy_d) + ',' +str(-(Kp*Fz+Kd*Fz_d)))
         else:
+            print(F_median)
+            print(F_average)
             home = True
-
+            
 def haptic_feedback(data):
     global force_feedback
     force_feedback = [0, 0, 0]
-    force_feedback[0] = data.force.x
-    force_feedback[1] = data.force.y
-    force_feedback[2] = -data.force.z
+    force_feedback[0] = data.force.z
+    force_feedback[1] = -data.force.y
+    force_feedback[2] = -data.force.x
 
+def EP_pose(data):
+    '''
+    Input: data (ROS pose message)
+    Output: ep_pose is a global variable that gets updated when the callback function is executed by the subscriber
+    '''
+
+    global ep_pose
+    ep_pose = [0,0,0,0,0,0,0]
+    ep_pose[0] = data.position.x
+    ep_pose[1] = data.position.y
+    ep_pose[2] = data.position.z
+    ep_pose[3] = data.orientation.x
+    ep_pose[4] = data.orientation.y
+    ep_pose[5] = data.orientation.z
+    ep_pose[6] = data.orientation.w
 
 def get_cartesian(pose):
     position = pose.p
@@ -77,6 +108,7 @@ if __name__ == "__main__":
     force_feedback = [0, 0, 0]
 
     force_sub = rospy.Subscriber('/force_sensor', Wrench, haptic_feedback)
+    ep_sub = rospy.Subscriber('/ep_pose', Pose, EP_pose)
     p2 = dvrk.psm('PSM2')
     zero_forces(p2,0.05)
 
@@ -92,7 +124,7 @@ if __name__ == "__main__":
     #ref_displacement_array = np.array([0.025,0.031,0.035,0.042])
     #ref_displacement_array = np.array([0.03])
     # set our rate to 1000hz
-    rate = rospy.Rate(1000)
+    rate = rospy.Rate(500)
 
     # get user to input filename
     filename = raw_input("Please key in filename :")
@@ -106,9 +138,9 @@ if __name__ == "__main__":
     ref_displacement = 0
     count = 0
     time = rospy.get_time() - time_start
-
+    ep_pose = [0,0,0,0,0,0,0]
     pos = get_cartesian(pose)
-    data = np.hstack((ref_displacement, count, time, pos, wrench))
+    data = np.hstack((ref_displacement, count, time, pos, ep_pose, wrench))
 
     for ref_displacement in ref_displacement_array:
 
@@ -123,8 +155,8 @@ if __name__ == "__main__":
 
             time_start = rospy.get_time()
 
-            x_0 = p2.get_current_position()
-            print(x_0.p.x())
+            x_0 = ep_pose[0]/1000 #x_0 = p2.get_current_position()
+            #print(x_0.p.x())
             #target_displacement =  x_0.p.x() - ref_displacement
             target_displacement = ref_displacement
             time_for_stretch = target_displacement * 100
@@ -138,7 +170,7 @@ if __name__ == "__main__":
             # move to the correct start loading position
 
             total_displacement = 0
-            initial_position = pose.p.x()
+            initial_position = ep_pose[0]/1000 #pose.p.x()
 
             # stretch portion
             while total_displacement < target_displacement:
@@ -149,17 +181,19 @@ if __name__ == "__main__":
                 wrench = force_feedback
 
                 pos = get_cartesian(pose)
-                new_data = np.hstack((ref_displacement, count, time, pos, wrench))
+                new_data = np.hstack((ref_displacement, count, time, pos, ep_pose,wrench))
                 data = np.vstack((data, new_data))
 
-                total_displacement = initial_position - pose.p.x()
+                total_displacement = initial_position - ep_pose[0]/1000 #pose.p.x()
+                
+                rate.sleep()
 
 
             print('returning...')
             print('total displacement : ' + str(total_displacement))
             print('force level : ' + str(force_feedback[0]))
             total_displacement = 0  # reset our counter
-            initial_position = pose.p.x()
+            initial_position =  ep_pose[0]/1000# pose.p.x()
 
             # return portion
             while total_displacement < target_displacement:
@@ -172,11 +206,12 @@ if __name__ == "__main__":
 
                 pos = get_cartesian(pose)
 
-                new_data = np.hstack((ref_displacement, count, time, pos, wrench))
+                new_data = np.hstack((ref_displacement, count, time, pos, ep_pose, wrench))
                 data = np.vstack((data, new_data))
 
-                total_displacement = pose.p.x() - initial_position
-
+                total_displacement = ep_pose[0]/1000 - initial_position #total_displacement = pose.p.x() - initial_position
+                
+                
             rospy.sleep(0.5)
 
             print 'test done'

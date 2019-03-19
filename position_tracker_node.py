@@ -14,7 +14,7 @@ Pdata = Pose()
 rospy.init_node('position_tracker_node')
 Ppub = rospy.Publisher('ep_pose', Pose, queue_size=10)
 
-rate = rospy.Rate(1000)
+rate = rospy.Rate(90)
 
 
 print 'initializing ROS node...'
@@ -34,6 +34,7 @@ while True:
 	px = s.recv(5)
 	py = s.recv(5)
 	pz = s.recv(5)
+	
 	q1 = s.recv(5)
 	q2 = s.recv(5)
 	q3 = s.recv(5)
@@ -42,10 +43,16 @@ while True:
 	Pdata.position.x = float(px)
 	Pdata.position.y = float(py)
 	Pdata.position.z = float(pz)
+	Pdata.orientation.x = 0
+	Pdata.orientation.y = 0
+	Pdata.orientation.z = 0
+	Pdata.orientation.w = 0
+	
 	Pdata.orientation.x = float(q1)
 	Pdata.orientation.y = float(q2)
 	Pdata.orientation.z = float(q3)
 	Pdata.orientation.w = float(q4)
+	
 
 	Ppub.publish(Pdata)
 	rate.sleep()

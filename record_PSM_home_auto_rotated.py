@@ -49,15 +49,17 @@ def load_manipulator_pose(filename):
 
 def zero_forces(PSM,epsilon):
     home = False
-    Kp = 0.007
-    Kd = 0.005
+    Kp = 0.001
+    Kd = 0.0005
     
     F_old = force_feedback
 
     F_array = npm.repmat(force_feedback,10,1)
 
     while home == False:
-
+        
+        theta = 40/180*np.pi # radians
+        
         Fx = force_feedback[0]
         Fy = force_feedback[1]
         Fz = force_feedback[2]
@@ -76,7 +78,8 @@ def zero_forces(PSM,epsilon):
         F_average = np.mean(F_array,0)
 
         if np.linalg.norm(F_median)>epsilon:
-            p2.dmove(PyKDL.Vector(Kp*Fx+Kd*Fx_d, Kp*Fy+Kd*Fy_d, Kp*Fz+Kd*Fz_d))
+            p2.dmove(PyKDL.Vector(Kp*(Fx*np.cos(theta)+Fy*np.sin(theta))+Kd*(Fx_d*np.cos(theta)+Fy_d*np.sin(theta)), Kp*(-Fx*np.sin(theta)+Fy*np.cos(theta))+Kd*(-Fx_d*np.sin(theta)+Fy_d*np.cos(theta)), Kp*Fz+Kd*Fz_d))
+            #p2.dmove(PyKDL.Vector(Kp*(Fx*np.cos(theta)+Fy*np.sin(theta)), Kp*(-Fx*np.sin(theta)+Fy*np.cos(theta)), Kp*Fz+Kd*Fz_d))
             #print(np.linalg.norm(F_median))
             #print(np.linalg.norm(force_feedback))
             #print(force_feedback)
@@ -90,7 +93,7 @@ if __name__ == "__main__":
 
     """ MTM home rough position """
     ''' We use this to initialize a position for the MTMR'''
-    MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home.txt')
+    MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home_rot.txt')
 
     c = dvrk.console()
     p2 = dvrk.psm('PSM2')
@@ -125,7 +128,7 @@ if __name__ == "__main__":
         print("q2= " + str(output_psm[4]))
         print("q3= " + str(output_psm[5]))
         print("q4= " + str(output_psm[6]))
-        save_file = filename+'psm_home.txt'
+        save_file = filename+'psm_home_rot.txt'
         print("saving to " + save_file + " ...")
         np.savetxt(save_file,output_psm,delimiter=',')
         print("file saved")
@@ -138,7 +141,7 @@ if __name__ == "__main__":
         print("q2= " + str(output_mtm[4]))
         print("q3= " + str(output_mtm[5]))
         print("q4= " + str(output_mtm[6]))
-        save_file = filename+'mtm_home.txt'
+        save_file = filename+'mtm_home_rot.txt'
         print("saving to " + save_file + " ...")
         np.savetxt(save_file,output_mtm,delimiter=',')
         print("file saved")
@@ -174,7 +177,7 @@ if __name__ == "__main__":
                 print("q2= " + str(output_psm[4]))
                 print("q3= " + str(output_psm[5]))
                 print("q4= " + str(output_psm[6]))
-                save_file = filename+'psm_home.txt'
+                save_file = filename+'psm_home_rot.txt'
                 print("saving to " + save_file + " ...")
                 np.savetxt(save_file,output_psm,delimiter=',')
                 print("file saved")
@@ -187,7 +190,7 @@ if __name__ == "__main__":
                 print("q2= " + str(output_mtm[4]))
                 print("q3= " + str(output_mtm[5]))
                 print("q4= " + str(output_mtm[6]))
-                save_file = filename+'mtm_home.txt'
+                save_file = filename+'mtm_home_rot.txt'
                 print("saving to " + save_file + " ...")
                 np.savetxt(save_file,output_mtm,delimiter=',')
                 print("file saved")

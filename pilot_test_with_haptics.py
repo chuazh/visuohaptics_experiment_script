@@ -374,7 +374,8 @@ def main():
 
         trial_num += 1  # increment our trial num
         flag_next = False  # reset our flag next
-
+        
+        
         print('Homing manipulators... \n')
         dvrk_right.home_all()
 
