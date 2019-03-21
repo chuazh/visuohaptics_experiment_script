@@ -10,6 +10,8 @@ Future scripts might include a palpation test too.
 
 It requires initializing the MSM and PSM "home" positions.
 
+Log
+03/18/19 Added the option to perform catch trials
 """
 
 import rospy
@@ -102,7 +104,7 @@ def collect_filename():
     haptic = input("Please enter 0 for no haptic condition, 1 for haptics, 2 for manual haptics: ")
     print '\n'
 
-    test = input("Please enter 0 for training, 1 for test, 2 for rotation test, 3 for catch: ")
+    test = input("Please enter 0 for training, 1 for test, 2 for rotation test, 3 for catch, 4 for palpate: ")
     print '\n'
 
     material_select = input("Please select material. 0 for EF and 1 for DS: ")
@@ -126,10 +128,13 @@ def populate_training(force_array, num_trials):
 
     return force_array_seq
 
-def populate_and_randomize_test_catch(force_array, num_trials,num_catch):
+def populate_and_randomize_test_catch(force_array, num_trials,num_catch, catch_limit):
     '''
     This function populates a test sequence of forces based on the forces specified in force_array with multiples of num_trials.
-    The function shuffles the sequence of forces and makes sure that no test forces is repeated back to back.
+    Alongside the test sequence, it also generates a flag to indicate catch trials. The number of catch trials is specified by num_catch
+    The function shuffles the sequence of forces and makes sure that no test forces is repeated back to back. It also checks and reshuffles if
+    the number of consecutive catch trials exceed the variable catch_limit.
+    
     Input: force_array (1xN list) , num_trials (integer)
     Output: force_array_seq (1x(N*num_trials) list)
     '''
@@ -168,7 +173,7 @@ def populate_and_randomize_test_catch(force_array, num_trials,num_catch):
         checkedCatch = force_array_seq[0][1]
 
         force_array_tup = [[],[]]
-        for i in range(1, num_trials * len(force_array)):
+        for i in range(0, num_trials * len(force_array)):
             force_array_tup[0].append(force_array_seq[i][0])
             force_array_tup[1].append(force_array_seq[i][1])
 
@@ -184,7 +189,7 @@ def populate_and_randomize_test_catch(force_array, num_trials,num_catch):
             else:
                 catch_limiter = 0
 
-            if test == False and catch_limiter < 2:
+            if test == False and catch_limiter < catch_limit:
                 checkedNum = force_array_seq[i][0] # if not same then advance to check the next one
                 checkedCatch = force_array_seq[i][1]
             else:
@@ -260,6 +265,7 @@ def post_trial_feedback(ref_force_current, ref_force_next, act_force, trial_num,
     return msg
 
 def load_manipulator_pose(filename):
+
     '''
     This function loads a PyKDL pose from a text file
     Input: filename (string)
@@ -300,8 +306,12 @@ class arm_capture_obj:
             filename = filename + '_train'
         elif subj_data[2] == 1:
             filename = filename + '_test'
-        else:
+        elif subj_data[2] == 2:
             filename = filename + '_rotated'
+        elif subj_data[2] == 3:
+            filename = filename + '_catch'
+        else:
+            filename = filename + '_palpate'
 
         if subj_data[3] == 0:
             filename = filename + '_ef50'
@@ -327,8 +337,8 @@ class arm_capture_obj:
         Input: pykdlframe (pyKDL frame)
         '''
         self.PSM_pos = pykdlframe
-
-    def home_all(self,rotation_flag):
+    
+    def home_no_zero(self):
         ''' home the MTMs and PSMs'''
         self.c.teleop_stop()
         print("homing MTM and PSM")
@@ -336,16 +346,21 @@ class arm_capture_obj:
         self.action_complete = self.p2.move(self.PSM_pos)
         self.m2.move(self.MTMR_pos)
         rospy.sleep(0.5)
+    
+    def home_all(self,rotation_flag):
+        
+        self.home_no_zero()
+        
         if rotation_flag:
-            self.zero_forces_rotated(0.01)
+            self.zero_forces_rotated(0.05)
             rospy.sleep(0.25)
-            self.zero_forces_rotated(0.01)
-            self.c.teleop_start()
+            self.zero_forces_rotated(0.05)
         else:
-            self.zero_forces(0.01)
+            self.zero_forces(0.05)
             rospy.sleep(0.25)
-            self.zero_forces(0.01)
-            self.c.teleop_start()
+            self.zero_forces(0.05)
+            
+        self.c.teleop_start()
 
     def get_cartesian(self, pose):
         '''
@@ -668,12 +683,12 @@ ep_pose = [0,0,0,0,0,0,0]
 
 def main():
     '''MAIN ROUTINE'''
-
+    
     exiter = False  # exit the loop flag
 
     # collect the filename parameters to initialize the save function in the arm_capture_obj class
     #file_data = collect_filename()
-    file_data = np.array([100,1,2,1])
+    file_data = np.array([100,1,1,1])
 
     if file_data[1] == 2 and file_data[2] == 0: # indicates manual training stage
         dvrk_right = console_capture_obj(file_data)
@@ -689,8 +704,6 @@ def main():
     #trial_num = input('Key in the trial number you want to start from: ')
     trial_num = trial_num-1
 
-    break_trial = 30
-
     # create the subscriber to check the footpedals
     sub = rospy.Subscriber('/dvrk/footpedals/camera', Joy, trigger_callback)
     teleop_sub = rospy.Subscriber('/dvrk/footpedals/coag', Joy, teleop_callback)
@@ -700,15 +713,21 @@ def main():
     cam_reset_pub = rospy.Publisher('cam_reset', Bool, queue_size=10)
 
     ''' Loading manipulator home positions '''
-    if file_data[2] == 2: # if we are in rotated testing
+    if file_data[2] == 4: # if we are in palpation
+        PSM_pos = load_manipulator_pose('./manipulator_homing/psm_home_palp.txt')
+        MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home_palp.txt')
+        dvrk_right.set_home_MTM(MTMR_pos)
+        dvrk_right.set_home_PSM(PSM_pos)
+        dvrk_right.m2.set_wrench_body_orientation_absolute(True)
+    elif file_data[2] == 2: # if we are in rotated testing
         PSM_pos = load_manipulator_pose('./manipulator_homing/psm_home_rot.txt')
         MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home_rot.txt')
         dvrk_right.set_home_MTM(MTMR_pos)
         dvrk_right.set_home_PSM(PSM_pos)
         dvrk_right.m2.set_wrench_body_orientation_absolute(True)
     elif file_data[1] == 0 or file_data[1] == 1: # if we are in RMIS
-        PSM_pos = load_manipulator_pose('./manipulator_homing/psm_home_rot.txt')
-        MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home_rot.txt')
+        PSM_pos = load_manipulator_pose('./manipulator_homing/psm_home.txt')
+        MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home.txt')
         dvrk_right.set_home_MTM(MTMR_pos)
         dvrk_right.set_home_PSM(PSM_pos)
         dvrk_right.m2.set_wrench_body_orientation_absolute(True)
@@ -721,22 +740,38 @@ def main():
             dvrk_right.m2.set_wrench_body_orientation_absolute(True)
 
     '''Experiment Parameters'''
-    num_training_trials = 30
-    num_test_trials = 4
-    num_catch_trials = 2
+    num_training_trials = 30 # num trial per training reference force
+    break_trial = 30 # num trials before break
+    num_test_trials = 5 # num trials per testing reference force
+    num_test_trials_gen = 5 # num trial per generalized testing reference force
+    num_catch_trials = 2 # num catch trials
+    num_consec_catches = 2 # num allowed consecutive catch trials
+    default_scale = 0.5 # default teleop scale
+    catch_scale = 0.4 # catch trial teleop scale
 
     # ref_force_array_train = np.array([1,1.5,2.5,4,6])
-    ref_force_array_train = np.array([1, 2.5, 5.5, 4, 1.5])
-    ref_force_array_test = np.array([0.75, 2, 3, 4.5, 6])
     # ref_force_array_test = np.array([2,3,4.5,5.5,8])
+    
+    ref_force_array_train = np.array([1.5,3.5,6,4.5,2.5]) # make sure to staircase it
+    ref_force_array_test = np.array([0.75,1,2,3,4,5,7,8])
+    ref_force_array_rot = np.array([2, 3, 4, 5])
+    ref_force_array_palp = np.array([2, 3, 4, 5])
+    
     ref_force_train = populate_training(ref_force_array_train, num_training_trials)
-    #ref_force_test = populate_and_randomize_test(ref_force_array_test, num_test_trials)
 
-    (ref_force_test,ref_force_catch) = populate_and_randomize_test_catch(ref_force_array_test, num_test_trials, num_catch_trials)
+    if file_data[2] == 3:
+        (ref_force_test, ref_force_catch) = populate_and_randomize_test_catch(ref_force_array_test, num_test_trials, num_catch_trials, num_consec_catches) # catch trial function
+        print(ref_force_catch)
+    elif file_data[2] == 1:
+        ref_force_test = populate_and_randomize_test(ref_force_array_test, num_test_trials) # no catch trials
+    elif file_data[2] == 2: # rotated
+        ref_force_test = populate_and_randomize_test(ref_force_array_rot, num_test_trials_gen)
+    else: # palpate
+        ref_force_test = populate_and_randomize_test(ref_force_array_palp, num_test_trials_gen)
 
     print(ref_force_train)
     print(ref_force_test)
-    print(ref_force_catch)
+
 
     # initialize the data structs for recording
     force = [0, 0, 0]
@@ -745,21 +780,25 @@ def main():
 
     ''' Main Loop '''
     while exiter == False and not rospy.is_shutdown():
-
+    
+        dvrk_right.c.set_teleop_scale(default_scale)
         trial_num += 1  # increment our trial num
         flag_next = False  # reset our flag next
 
         ''' Homing Sequence '''
-        if file_data[2] == 2:
+        if file_data[2] == 4: # is we are in palpation home without force zeroing
+            dvrk_right.home_no_zero()
+            dvrk_right.c.teleop_start()
+            while dvrk_right.action_complete == False:
+                print(dvrk_right.action_complete)
+        elif file_data[2] == 2:
             print('Homing manipulators... \n')
             dvrk_right.home_all(True) # home all with rotation flag set to True
             while dvrk_right.action_complete == False:
                 print(dvrk_right.action_complete)
-
-        elif file_data[1] == 0 or file_data[1] == 1 : # only do auto homing if the experiment condition is teleoperated
+        elif file_data[1] == 0 or file_data[1] == 1: # only do auto homing if the experiment condition is teleoperated
             print('Homing manipulators... \n')
             dvrk_right.home_all(False)
-
             while dvrk_right.action_complete == False:
                 print(dvrk_right.action_complete)
         else:
@@ -908,6 +947,16 @@ def main():
             else:
                 print('Starting Trial for Test, Training with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
 
+            ''' Catch Trial Conditional Statement'''
+            if file_data[2] == 3:
+                print('catch trials enabled')
+                if ref_force_catch[trial_num-1] == 1:
+                    print('this trial is catch')
+                    dvrk_right.c.set_teleop_scale(catch_scale)
+                else:
+                    print('this trial in not catch')
+                    dvrk_right.c.set_teleop_scale(default_scale)
+ 
             while flag_next == False:
 
                 force = force_feedback  # use the force feedback
@@ -938,17 +987,40 @@ def main():
             else:
                 print('Starting Trial for GTest, Training with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
 
-            if file_data[2] == 2:
-                print('catch trials enabled')
-                if ref_force_catch[trial_num-1] == 1:
-                    print('this trial is catch')
-                    dvrk_right.c.set_teleop_scale(0.2)
-                else:
-                    print('this trial in not catch')
-                    dvrk_right.c.set_teleop_scale(0.5)
-
             while flag_next == False:
 
+                force = force_feedback  # use the force feedback
+                EPpose = ep_pose
+                time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
+
+                if time > 0.5 and flag_next == False and trigger == True:
+                    flag_next = True
+                    if trial_num < len(ref_force_test):
+                        message = 'next target force: ' + str(ref_force_test[trial_num])
+                        message_pub.publish(message)
+
+                rate.sleep()
+
+            # END OF WHILE LOOP
+
+        '''Test Phase Palpation'''
+
+        if file_data[2] == 4:
+
+            # check if we are at the end of our test condition and if we are we flip the exiter flag
+            if trial_num == len(ref_force_test)+1:
+                exiter = True
+                break
+
+            if file_data[1] == 1:
+                print('Starting Trial for PalpTest, Training with Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
+            elif file_data[1] == 2:
+                print('Starting Trial for PalpTest, Training with no Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
+            else:
+                print('Starting Trial for PalpTest, Training with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
+
+            while flag_next == False:
+                
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
                 time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)

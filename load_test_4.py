@@ -124,7 +124,7 @@ if __name__ == "__main__":
     #ref_displacement_array = np.array([0.025,0.031,0.035,0.042])
     #ref_displacement_array = np.array([0.03])
     # set our rate to 1000hz
-    rate = rospy.Rate(500)
+    rate = rospy.Rate(1000)
 
     # get user to input filename
     filename = raw_input("Please key in filename :")
