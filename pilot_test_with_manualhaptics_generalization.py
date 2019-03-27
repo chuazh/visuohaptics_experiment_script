@@ -151,8 +151,6 @@ def populate_and_randomize_test_catch(force_array, num_trials,num_catch, catch_l
 
     for i in range(num_trials * len(force_array)):
 
-        print(count_catch)
-
         if i % num_trials == 0:
             count_catch = 0
 
@@ -194,7 +192,7 @@ def populate_and_randomize_test_catch(force_array, num_trials,num_catch, catch_l
                 checkedCatch = force_array_seq[i][1]
             else:
                 reset = True # if not use the reset to indicate we have to reshuffle.
-                print('reshuffling')
+                #print('reshuffling')
                 break
 
     return force_array_tup
@@ -539,6 +537,39 @@ class arm_capture_obj:
                 print(F_average)
                 home = True
 
+    def zero_force_manually(self,epsilon):
+
+        home = False
+
+        F_old = force_feedback
+
+        F_array = npm.repmat(force_feedback,10,1)
+
+        while home == False:
+            Fx = force_feedback[0]
+            Fy = force_feedback[1]
+            Fz = force_feedback[2]
+            Fx_d = Fx-F_old[0]
+            Fy_d = Fy-F_old[1]
+            Fz_d = Fz-F_old[2]
+
+            F_old = [Fx,Fy,Fz]
+
+            F_array[0,:] = force_feedback
+            F_array[1,:] = F_old
+            F_array[2:-1,:] = F_array[1:-2,:]
+
+            #F_average = (np.array(force_feedback) + np.array(F_old)+ np.array(F1)+np.array(F2)+np.array(F3)+np.array(F4))/6
+            F_median = np.median(F_array,0)
+            F_average = np.mean(F_array,0)
+
+            if np.linalg.norm(F_median)>epsilon:
+                pass
+            else:
+                print(F_median)
+                print(F_average)
+                home = True
+
 class console_capture_obj:
 
     def __init__(self, subj_data):
@@ -687,8 +718,10 @@ def main():
     exiter = False  # exit the loop flag
 
     # collect the filename parameters to initialize the save function in the arm_capture_obj class
-    #file_data = collect_filename()
-    file_data = np.array([100,1,1,1])
+    file_data = collect_filename()
+    #file_data = np.array([100,1,1,1])
+    # 0 for no haptic condition, 1 for haptics, 2 for manual haptics ,
+    # 0 for training, 1 for test, 2 for rotation test, 3 for catch, 4 for palpate:
 
     if file_data[1] == 2 and file_data[2] == 0: # indicates manual training stage
         dvrk_right = console_capture_obj(file_data)
@@ -700,8 +733,8 @@ def main():
     rate = rospy.Rate(1000)
 
     # initialize trial number
-    trial_num = 1
-    #trial_num = input('Key in the trial number you want to start from: ')
+    #trial_num = 1
+    trial_num = input('Key in the trial number you want to start from: ')
     trial_num = trial_num-1
 
     # create the subscriber to check the footpedals
@@ -732,11 +765,12 @@ def main():
         dvrk_right.set_home_PSM(PSM_pos)
         dvrk_right.m2.set_wrench_body_orientation_absolute(True)
     else: # if we are in manual
-        if file_data[2] == 1: # if manual testing
+        if file_data[2] == 1 or file_data[2] == 3: # if manual testing
             PSM_pos = load_manipulator_pose('./manipulator_homing/psm_home.txt')
             MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home.txt')
             dvrk_right.set_home_MTM(MTMR_pos)
             dvrk_right.set_home_PSM(PSM_pos)
+            print('set')
             dvrk_right.m2.set_wrench_body_orientation_absolute(True)
 
     '''Experiment Parameters'''
@@ -756,12 +790,10 @@ def main():
     ref_force_array_test = np.array([0.75,1,2,3,4,5,7,8])
     ref_force_array_rot = np.array([2, 3, 4, 5])
     ref_force_array_palp = np.array([2, 3, 4, 5])
-    
     ref_force_train = populate_training(ref_force_array_train, num_training_trials)
 
     if file_data[2] == 3:
         (ref_force_test, ref_force_catch) = populate_and_randomize_test_catch(ref_force_array_test, num_test_trials, num_catch_trials, num_consec_catches) # catch trial function
-        print(ref_force_catch)
     elif file_data[2] == 1:
         ref_force_test = populate_and_randomize_test(ref_force_array_test, num_test_trials) # no catch trials
     elif file_data[2] == 2: # rotated
@@ -769,9 +801,45 @@ def main():
     else: # palpate
         ref_force_test = populate_and_randomize_test(ref_force_array_palp, num_test_trials_gen)
 
+    # save our experiment sequence data in case something goes wrong and we need to re-run
+    if trial_num > 0: # load the files
+        if file_data[2] == 0:
+            save_filename = dvrk_right.name + 'train_array' + '.csv'
+            ref_force_train =  np.loadtxt(save_filename,delimiter=',')
+        elif file_data[2] == 1:
+            save_filename = dvrk_right.name + 'test_array' + '.csv'
+            ref_force_test =  np.loadtxt(save_filename,delimiter=',')
+        elif file_data[2] == 2:
+            save_filename = dvrk_right.name + 'rot_array' + '.csv'
+            ref_force_test =  np.loadtxt(save_filename,delimiter=',')
+        elif file_data[2] == 3:
+            save_filename = dvrk_right.name + 'catch_array' + '.csv'
+            ref_force_test, ref_force_catch =  np.loadtxt(save_filename,delimiter=',')
+        else:
+            save_filename = dvrk_right.name + 'palp_array' + '.csv'
+            ref_force_test =  np.loadtxt(save_filename,delimiter=',')
+    else:
+        if file_data[2] == 0:
+            save_filename = dvrk_right.name + 'train_array' + '.csv'
+            np.savetxt(save_filename, ref_force_train, delimiter=',', fmt='%.4f')
+        elif file_data[2] == 1:
+            save_filename = dvrk_right.name + 'test_array' + '.csv'
+            np.savetxt(save_filename, ref_force_test, delimiter=',', fmt='%.4f')
+        elif file_data[2] == 2:
+            save_filename = dvrk_right.name + 'rot_array' + '.csv'
+            np.savetxt(save_filename, ref_force_test, delimiter=',', fmt='%.4f')
+        elif file_data[2] == 3:
+            save_filename = dvrk_right.name + 'catch_array' + '.csv'
+            np.savetxt(save_filename, np.vstack((ref_force_test,ref_force_catch)), delimiter=',', fmt='%.4f')
+        else:
+            save_filename = dvrk_right.name + 'palp_array' + '.csv'
+            np.savetxt(save_filename, ref_force_test, delimiter=',', fmt='%.4f')
+
     print(ref_force_train)
     print(ref_force_test)
 
+    if file_data[2] == 3:
+        print(ref_force_catch)
 
     # initialize the data structs for recording
     force = [0, 0, 0]
@@ -789,18 +857,18 @@ def main():
         if file_data[2] == 4: # is we are in palpation home without force zeroing
             dvrk_right.home_no_zero()
             dvrk_right.c.teleop_start()
-            while dvrk_right.action_complete == False:
-                print(dvrk_right.action_complete)
+            #while dvrk_right.action_complete == False:
+                #print(dvrk_right.action_complete)
         elif file_data[2] == 2:
             print('Homing manipulators... \n')
             dvrk_right.home_all(True) # home all with rotation flag set to True
-            while dvrk_right.action_complete == False:
-                print(dvrk_right.action_complete)
+            #while dvrk_right.action_complete == False:
+                #print(dvrk_right.action_complete)
         elif file_data[1] == 0 or file_data[1] == 1: # only do auto homing if the experiment condition is teleoperated
             print('Homing manipulators... \n')
             dvrk_right.home_all(False)
-            while dvrk_right.action_complete == False:
-                print(dvrk_right.action_complete)
+            #while dvrk_right.action_complete == False:
+                #print(dvrk_right.action_complete)
         else:
             if file_data[2] == 0: #if we are in manual training don't home. Let the user just reset themselves
                 print('Waiting for user to reset...\n')
@@ -809,12 +877,15 @@ def main():
             else: # if we are in manual testing, then we still have to do homing.
                 print('Homing manipulators... \n')
                 dvrk_right.home_all(False)
-                while dvrk_right.action_complete == False:
-                    print(dvrk_right.action_complete)
+                #while dvrk_right.action_complete == False:
+                    #print(dvrk_right.action_complete)
 
         #print('Homing Complete: ' + str(dvrk_right.action_complete))
         cam_reset_pub.publish(True)
-        message_pub.publish('Begin!!')
+        if file_data[2] == 0:
+            message_pub.publish('Begin! Target:' + str(ref_force_train[trial_num - 1]))
+        else:
+            message_pub.publish('Begin! Target:' + str(ref_force_test[trial_num - 1]))
         dvrk_right.action_complete = False  # reset our flag
 
         dvrk_right.time_start = rospy.get_time() # reset our timer

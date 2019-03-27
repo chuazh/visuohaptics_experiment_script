@@ -47,9 +47,11 @@ def zero_forces(PSM,epsilon):
         #F_average = (np.array(force_feedback) + np.array(F_old)+ np.array(F1)+np.array(F2)+np.array(F3)+np.array(F4))/6
         F_median = np.median(F_array,0)
         F_average = np.mean(F_array,0)
-
+        
         if np.linalg.norm(F_median)>epsilon:
+        #if np.abs(Fx) > 0.05:
             p2.dmove(PyKDL.Vector(Kp*Fx+Kd*Fx_d, Kp*Fy+Kd*Fy_d, Kp*Fz+Kd*Fz_d))
+            #p2.dmove(PyKDL.Vector(Kp*Fx+Kd*Fx_d, 0, 0))
             #print(np.linalg.norm(F_median))
             #print(np.linalg.norm(force_feedback))
             #print(force_feedback)

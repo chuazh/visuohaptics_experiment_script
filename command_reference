@@ -1,0 +1,9 @@
+COMMANDS FOR THE DVRK
+
+CD into correct directory:
+
+roscd dvrk_robot/resources
+
+Launch on right side
+
+rosrun dvrk_robot dvrk_console_json -j console-teleop-MTMR-PSM2.json -i ros/ros-io-MTMR-PSM2.json -p 0.001
