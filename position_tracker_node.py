@@ -26,32 +26,58 @@ s.connect((HOST,PORT))
 print 'connected!'
 
 old_time = 0
+skip_flag = False
 
 while True:
 	time = rospy.get_time()
 	fs = 1/(time-old_time)
-
 	px = s.recv(5)
 	py = s.recv(5)
 	pz = s.recv(5)
-	
 	q1 = s.recv(5)
 	q2 = s.recv(5)
 	q3 = s.recv(5)
 	q4 = s.recv(5)
-
+    
+	'''
+	if not skip_flag:
+	    px = s.recv(5)
+	    py = s.recv(5)
+	    pz = s.recv(5)
+	    q1 = s.recv(5)
+	    q2 = s.recv(5)
+	    q3 = s.recv(5)
+	    q4 = s.recv(5)
+	else:
+	    px = 0
+	    py = s.recv(5)
+	    pz = s.recv(5)
+	
+	    q1 = s.recv(5)
+	    q2 = s.recv(5)
+	    q3 = s.recv(5)
+	    q4 = s.recv(5)
+    
+	if pz < 100:
+		skip_flag = True
+		print('error!')
+	else:
+		skip_flag = False 
+	'''
+    
 	Pdata.position.x = float(px)
 	Pdata.position.y = float(py)
 	Pdata.position.z = float(pz)
-	Pdata.orientation.x = 0
-	Pdata.orientation.y = 0
-	Pdata.orientation.z = 0
-	Pdata.orientation.w = 0
+	#Pdata.orientation.x = 0
+	#Pdata.orientation.y = 0
+	#Pdata.orientation.z = 0
+	#Pdata.orientation.w = 0
 	
 	Pdata.orientation.x = float(q1)
 	Pdata.orientation.y = float(q2)
 	Pdata.orientation.z = float(q3)
 	Pdata.orientation.w = float(q4)
+	
 	
 
 	Ppub.publish(Pdata)

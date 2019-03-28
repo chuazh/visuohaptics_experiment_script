@@ -250,16 +250,22 @@ def post_trial_feedback(ref_force_current, ref_force_next, act_force, trial_num,
     lower_bounds = np.array([0.90989649, 1.40609582, 2.36108062, 3.7005955, 5.44771846])
     '''
 
+    ''' Enable this to get qualitative feedback '''
     for i in range(len(ref_force_array)):
         if ref_force_current == ref_force_array[i]:
-
+            
             if act_force[0] < lower_bounds[i]:
                 msg = "TOO LOW"
             elif act_force[0] > upper_bounds[i]:
                 msg = "TOO HIGH"
             else:
                 msg = "CORRECT!"
-    msg = 'completed ' + str(trial_num) + '. ' + msg + '. next target force is ' + str(ref_force_next)
+    
+    
+    error = round(act_force[0] - ref_force_current,2)
+    msg = msg + ', Error: ' + str(error)
+            
+    msg = 'completed ' + str(trial_num) + '. ' + msg + '. next force : ' + str(ref_force_next)
     return msg
 
 def load_manipulator_pose(filename):
@@ -883,9 +889,16 @@ def main():
         #print('Homing Complete: ' + str(dvrk_right.action_complete))
         cam_reset_pub.publish(True)
         if file_data[2] == 0:
-            message_pub.publish('Begin! Target:' + str(ref_force_train[trial_num - 1]))
+            if not trial_num > len(ref_force_train): 
+                message_pub.publish('Begin! Target:' + str(ref_force_train[trial_num - 1]))
+            else:
+                message_pub.publish('End!')
         else:
-            message_pub.publish('Begin! Target:' + str(ref_force_test[trial_num - 1]))
+            if not trial_num > len(ref_force_test): 
+                message_pub.publish('Begin! Target:' + str(ref_force_test[trial_num - 1]))
+            else:
+                message_pub.publish('End!')
+                
         dvrk_right.action_complete = False  # reset our flag
 
         dvrk_right.time_start = rospy.get_time() # reset our timer
@@ -908,9 +921,13 @@ def main():
             print('Starting Trial for Training, No Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]))
 
             while flag_next == False:
-
+                              
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
+                
+                if EPpose[2]<100:
+                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")
+                
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
 
                 if time > 0.5 and flag_next == False and trigger == True:
@@ -945,11 +962,15 @@ def main():
             print('Starting Trial for Training, with Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]) )
 
             while flag_next == False:
-
+                                
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
-
                 dvrk_right.render_force_feedback(force, teleop)
+                
+                if EPpose[2]<100:
+                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")
+                    dvrk_right.render_force_feedback([0,0,0], teleop)
+
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
 
                 if time > 0.5 and flag_next == False and trigger == True:
@@ -982,10 +1003,13 @@ def main():
             print('Starting Trial for Training, with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]) )
 
             while flag_next == False:
-
+                     
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
-
+                
+                if EPpose[2]<100:
+                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")     
+                
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
 
                 if time > 0.5 and flag_next == False and trigger == True:
@@ -1032,8 +1056,12 @@ def main():
 
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
+                
+                if EPpose[2]<100:
+                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")
+                    
                 time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
-
+                
                 if time > 0.5 and flag_next == False and trigger == True:
                     flag_next = True
                     if trial_num < len(ref_force_test):
@@ -1063,7 +1091,10 @@ def main():
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
                 time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
-
+                
+                if EPpose[2]<100:
+                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")
+                
                 if time > 0.5 and flag_next == False and trigger == True:
                     flag_next = True
                     if trial_num < len(ref_force_test):
@@ -1091,9 +1122,13 @@ def main():
                 print('Starting Trial for PalpTest, Training with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
 
             while flag_next == False:
-                
+
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
+                
+                if EPpose[2]<100:
+                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")
+                    
                 time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
 
                 if time > 0.5 and flag_next == False and trigger == True:
