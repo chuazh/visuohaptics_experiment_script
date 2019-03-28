@@ -794,8 +794,8 @@ def main():
     
     ref_force_array_train = np.array([1.5,3.5,6,4.5,2.5]) # make sure to staircase it
     ref_force_array_test = np.array([0.75,1,2,3,4,5,7,8])
-    ref_force_array_rot = np.array([2, 3, 4, 5])
-    ref_force_array_palp = np.array([2, 3, 4, 5])
+    ref_force_array_rot = np.array([1, 3, 5, 8])
+    ref_force_array_palp = np.array([1, 3, 5, 8])
     ref_force_train = populate_training(ref_force_array_train, num_training_trials)
 
     if file_data[2] == 3:
