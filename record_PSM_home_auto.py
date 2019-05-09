@@ -91,7 +91,6 @@ if __name__ == "__main__":
     """ MTM home rough position """
     ''' We use this to initialize a position for the MTMR'''
     MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home.txt')
-
     c = dvrk.console()
     p2 = dvrk.psm('PSM2')
     mtm = dvrk.mtm('MTMR')
@@ -99,7 +98,6 @@ if __name__ == "__main__":
     force_sub = rospy.Subscriber('/force_sensor', Wrench, haptic_feedback)
 
     force_feedback = [0,0,0]
-
     print('initializing approximate MTMR position')
     mtm.move(MTMR_pos)
     c.teleop_start()

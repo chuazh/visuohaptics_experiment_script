@@ -751,7 +751,7 @@ def main():
     message_pub = rospy.Publisher('force_msg', String, queue_size=10)
     cam_reset_pub = rospy.Publisher('cam_reset', Bool, queue_size=10)
 
-    ''' Loading manipulator home positions '''
+    '''------------ Loading manipulator home positions ------------'''
     if file_data[2] == 4: # if we are in palpation
         PSM_pos = load_manipulator_pose('./manipulator_homing/psm_home_palp.txt')
         MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home_palp.txt')
@@ -779,7 +779,7 @@ def main():
             print('set')
             dvrk_right.m2.set_wrench_body_orientation_absolute(True)
 
-    '''Experiment Parameters'''
+    '''------------ Experiment Parameters ------------'''
     num_training_trials = 30 # num trial per training reference force
     break_trial = 30 # num trials before break
     num_test_trials = 5 # num trials per testing reference force
@@ -788,7 +788,9 @@ def main():
     num_consec_catches = 2 # num allowed consecutive catch trials
     default_scale = 0.5 # default teleop scale
     catch_scale = 0.4 # catch trial teleop scale
-
+    countdown_time = 3 # count down time length
+    trial_time = 3 # trial time length
+    
     # ref_force_array_train = np.array([1,1.5,2.5,4,6])
     # ref_force_array_test = np.array([2,3,4.5,5.5,8])
     
@@ -852,7 +854,13 @@ def main():
     EPpose = [0,0,0,0,0,0,0]
     dvrk_right.init_data(force,EPpose, trial_num)
 
-    ''' Main Loop '''
+    '''
+    -------------------------------------------------------------
+    ------------------- Experiment Loop -------------------------
+    -------------------------------------------------------------
+    
+    '''
+    
     while exiter == False and not rospy.is_shutdown():
     
         dvrk_right.c.set_teleop_scale(default_scale)
@@ -888,14 +896,25 @@ def main():
 
         #print('Homing Complete: ' + str(dvrk_right.action_complete))
         cam_reset_pub.publish(True)
+        countdown = True
         if file_data[2] == 0:
-            if not trial_num > len(ref_force_train): 
-                message_pub.publish('Begin! Target:' + str(ref_force_train[trial_num - 1]))
+            if not trial_num > len(ref_force_train):
+                if countdown:
+                    count_time = rospy.get_time()
+                    count_down = False
+                while (rospy.get_time() - count_time) <= 3: # countdown timer is set to 3s
+                    message_pub.publish('Begin in %.0fs! Target: %i ' % (3-(rospy.get_time()-count_time),ref_force_train[trial_num - 1]))
+                message_pub.publish('Go!!!')
             else:
                 message_pub.publish('End!')
         else:
             if not trial_num > len(ref_force_test): 
-                message_pub.publish('Begin! Target:' + str(ref_force_test[trial_num - 1]))
+                if countdown:
+                    count_time = rospy.get_time()
+                    count_down = False
+                while (rospy.get_time() - count_time) <= 3:
+                    message_pub.publish('Begin in %.0fs! Target: %i ' % (3-(rospy.get_time()-count_time),ref_force_train[trial_num - 1]))
+                message_pub.publish('Go!!!')
             else:
                 message_pub.publish('End!')
                 
@@ -903,7 +922,11 @@ def main():
 
         dvrk_right.time_start = rospy.get_time() # reset our timer
 
-        '''Training Phase with No Haptics'''
+        '''
+        /////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////// Training Phase with No Haptics ///////////////////////
+        ////////////////////////////////////////////////////////////////////////////////
+        '''
 
         if file_data[1] == 0 and file_data[2] == 0:
 
@@ -922,15 +945,12 @@ def main():
 
             while flag_next == False:
                               
-                force = force_feedback  # use the force feedback
-                EPpose = ep_pose
-                
-                if EPpose[2]<100:
-                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")
+                force = force_feedback  # collect force data from sensor
+                EPpose = ep_pose # collect end effector pose from sensor
                 
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
 
-                if time > 0.5 and flag_next == False and trigger == True:
+                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
                     flag_next = True
                     if trial_num < len(ref_force_train):
                         message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force,
@@ -945,7 +965,11 @@ def main():
 
             # END OF WHILE LOOP
 
-        '''Training Phase with Haptics'''
+        '''
+        /////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////// Training Phase with Haptics //////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////
+        '''
 
         if file_data[1] == 1 and file_data[2] == 0:
 
@@ -963,17 +987,13 @@ def main():
 
             while flag_next == False:
                                 
-                force = force_feedback  # use the force feedback
-                EPpose = ep_pose
-                dvrk_right.render_force_feedback(force, teleop)
-                
-                if EPpose[2]<100:
-                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")
-                    dvrk_right.render_force_feedback([0,0,0], teleop)
-
+                force = force_feedback  # collect force data from sensor
+                EPpose = ep_pose # collect end effector pose from sensor
+                dvrk_right.render_force_feedback(force, teleop) # apply for force feedback to MTM
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
-
-                if time > 0.5 and flag_next == False and trigger == True:
+                message_pub.publish('%.1fs' % time)
+                
+                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
                     flag_next = True
                     if trial_num < len(ref_force_train):
                         message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv')
@@ -987,7 +1007,11 @@ def main():
 
             # END OF WHILE LOOP
 
-        '''Training Phase with Manual Haptics'''
+        '''
+        /////////////////////////////////////////////////////////////////////////////////
+        /////////////////// Training Phase with Manual Haptics //////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////
+        '''
         if file_data[1] == 2 and file_data[2] == 0:
 
             # check if we are at the end of our test condition and if we are we flip the exiter flag
@@ -1007,12 +1031,9 @@ def main():
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
                 
-                if EPpose[2]<100:
-                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")     
-                
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
-
-                if time > 0.5 and flag_next == False and trigger == True:
+                message_pub.publish('%.1fs' % time)
+                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
                     flag_next = True
                     if trial_num < len(ref_force_train):
                         message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv')
@@ -1026,7 +1047,11 @@ def main():
 
             # END OF WHILE LOOP
 
-        '''Test Phase'''
+        '''
+        /////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////// Test Phase ///////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////
+        '''
 
         if file_data[2] == 1 or file_data[2] == 3:
 
@@ -1056,13 +1081,10 @@ def main():
 
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
-                
-                if EPpose[2]<100:
-                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")
                     
                 time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
-                
-                if time > 0.5 and flag_next == False and trigger == True:
+                message_pub.publish('%.1fs' % time)                
+                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
                     flag_next = True
                     if trial_num < len(ref_force_test):
                         message = 'next target force: ' + str(ref_force_test[trial_num])
@@ -1070,7 +1092,11 @@ def main():
 
                 rate.sleep()
 
-        '''Test Phase Rotated'''
+        '''
+        /////////////////////////////////////////////////////////////////////////////////
+        /////////////////////////////// Test Phase Rotated //////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////
+        '''
 
         if file_data[2] == 2:
 
@@ -1091,11 +1117,9 @@ def main():
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
                 time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
+                message_pub.publish('%.1fs' % time)                
                 
-                if EPpose[2]<100:
-                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")
-                
-                if time > 0.5 and flag_next == False and trigger == True:
+                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
                     flag_next = True
                     if trial_num < len(ref_force_test):
                         message = 'next target force: ' + str(ref_force_test[trial_num])
@@ -1105,7 +1129,11 @@ def main():
 
             # END OF WHILE LOOP
 
-        '''Test Phase Palpation'''
+        '''
+        /////////////////////////////////////////////////////////////////////////////////
+        ///////////////////////////// Test Phase Palpation //////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////
+        '''
 
         if file_data[2] == 4:
 
@@ -1125,13 +1153,11 @@ def main():
 
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
-                
-                if EPpose[2]<100:
-                    pose_break = input("MicronTracker lost tracking, please restart node and press 1 to continue")
+ 
                     
                 time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
-
-                if time > 0.5 and flag_next == False and trigger == True:
+                message_pub.publish('%.1fs' % time)
+                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
                     flag_next = True
                     if trial_num < len(ref_force_test):
                         message = 'next target force: ' + str(ref_force_test[trial_num])
