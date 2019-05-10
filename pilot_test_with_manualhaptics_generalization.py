@@ -25,13 +25,12 @@ from geometry_msgs.msg import Vector3, Quaternion, Wrench, Pose
 from std_msgs.msg import String, Bool
 import numpy.matlib as npm
 from random import randint
-
+'''
 def trigger_callback(data):
-    '''
-    Callback function for the utility footpedal that helps advance the experiment progression
-    Input : data (ROS joystick message)
-    Output : no real output, but trigger is a global boolean variable that toggles
-    '''
+    
+    #Callback function for the utility footpedal that helps advance the experiment progression
+    #Input : data (ROS joystick message)
+    #Output : no real output, but trigger is a global boolean variable that toggles
 
     global trigger
     butt = data.buttons[0]
@@ -40,7 +39,22 @@ def trigger_callback(data):
     else:
         trigger = False
     return
-
+'''
+def trigger_callback2(data):
+    '''
+    The callback function for a button
+    Input : data (ROS Bool message)
+    Output: teleop is a global boolean variable that toggles
+    '''
+    
+    global trigger
+    butt = data.data
+    if butt == True:
+        trigger = True
+        
+    else:
+        trigger = False
+    return
 
 def teleop_callback(data):
     '''
@@ -744,7 +758,8 @@ def main():
     trial_num = trial_num-1
 
     # create the subscriber to check the footpedals
-    sub = rospy.Subscriber('/dvrk/footpedals/camera', Joy, trigger_callback)
+    #sub = rospy.Subscriber('/dvrk/footpedals/camera', Joy, trigger_callback)
+    sub = rospy.Subscriber('/advance_trial', Bool, trigger_callback2)
     teleop_sub = rospy.Subscriber('/dvrk/footpedals/coag', Joy, teleop_callback)
     force_sub = rospy.Subscriber('/force_sensor', Wrench, haptic_feedback)
     ep_sub = rospy.Subscriber('/ep_pose', Pose, EP_pose)
@@ -789,7 +804,7 @@ def main():
     default_scale = 0.5 # default teleop scale
     catch_scale = 0.4 # catch trial teleop scale
     countdown_time = 3 # count down time length
-    trial_time = 3 # trial time length
+    trial_time = 5 # trial time length
     
     # ref_force_array_train = np.array([1,1.5,2.5,4,6])
     # ref_force_array_test = np.array([2,3,4.5,5.5,8])
@@ -949,7 +964,7 @@ def main():
                 EPpose = ep_pose # collect end effector pose from sensor
                 
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
-
+                message_pub.publish('%.1fs' % time)
                 if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
                     flag_next = True
                     if trial_num < len(ref_force_train):
