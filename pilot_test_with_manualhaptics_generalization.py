@@ -25,7 +25,7 @@ from geometry_msgs.msg import Vector3, Quaternion, Wrench, Pose
 from std_msgs.msg import String, Bool
 import numpy.matlib as npm
 from random import randint
-'''
+
 def trigger_callback(data):
     
     #Callback function for the utility footpedal that helps advance the experiment progression
@@ -39,7 +39,7 @@ def trigger_callback(data):
     else:
         trigger = False
     return
-'''
+
 def trigger_callback2(data):
     '''
     The callback function for a button
@@ -446,8 +446,18 @@ class arm_capture_obj:
         '''This method just overwrites the old file with the updated data.
         It should be called after every trial as this way we don't lose any data.'''
         save_filename = self.name + '.csv'
+        
+        #check if file exists
+        if os.path.exists(save_filename):
+            print('file already exists. appending...')
+            f = open(save_filename,'ab')
+        else:
+            f = open(save_filename,'wb')
+        
         print ('saving ' + save_filename + '...')
-        np.savetxt(save_filename, self.data, delimiter=',', fmt='%.4f')
+        np.savetxt(f, self.data, delimiter=',', fmt='%.4f')
+        f.close()
+        
 
     def render_force_feedback(self, force, state_trigger):
         '''The state trigger should be tied to the teleoperation switch on the robot.
@@ -666,11 +676,18 @@ class console_capture_obj:
         return self.time
 
     def save_data(self):
-        '''This method just overwrites the old file with the updated data.
+        '''This method just checks if the file exists and if so appends the old file with the updated data.
         It should be called after every trial as this way we don't lose any data.'''
         save_filename = self.name + '.csv'
+        
+        #check if file exists
+        if os.path.exists(save_filename):
+            f = open(save_filename,'ab')
+        else:
+            f = open(save_filename,'wb')
+        
         print ('saving ' + save_filename + '...')
-        np.savetxt(save_filename, self.data, delimiter=',', fmt='%.4f')
+        np.savetxt(f, self.data, delimiter=',', fmt='%.4f')
 
     def zero_force_manually(self,epsilon):
         home = False
@@ -758,8 +775,8 @@ def main():
     trial_num = trial_num-1
 
     # create the subscriber to check the footpedals
-    #sub = rospy.Subscriber('/dvrk/footpedals/camera', Joy, trigger_callback)
-    sub = rospy.Subscriber('/advance_trial', Bool, trigger_callback2)
+    sub = rospy.Subscriber('/dvrk/footpedals/camera', Joy, trigger_callback)
+    #sub = rospy.Subscriber('/advance_trial', Bool, trigger_callback2)
     teleop_sub = rospy.Subscriber('/dvrk/footpedals/coag', Joy, teleop_callback)
     force_sub = rospy.Subscriber('/force_sensor', Wrench, haptic_feedback)
     ep_sub = rospy.Subscriber('/ep_pose', Pose, EP_pose)
@@ -804,7 +821,7 @@ def main():
     default_scale = 0.5 # default teleop scale
     catch_scale = 0.4 # catch trial teleop scale
     countdown_time = 3 # count down time length
-    trial_time = 5 # trial time length
+    trial_time = 7 # trial time length
     
     # ref_force_array_train = np.array([1,1.5,2.5,4,6])
     # ref_force_array_test = np.array([2,3,4.5,5.5,8])
@@ -908,7 +925,14 @@ def main():
                 dvrk_right.home_all(False)
                 #while dvrk_right.action_complete == False:
                     #print(dvrk_right.action_complete)
-
+        
+        if (trial_num)%break_trial==1 and file_data[2] == 0 and trial_num>break_trial: # if we are in training enforce the breaks
+                continue_flag = False
+                while continue_flag != 1:
+                    message_pub.publish('Well done :) it is break time')
+                    continue_flag = input("Break Time. Once ready, enter 1 to continue: ")
+                dvrk_right.time_start = rospy.get_time() # reset our timer
+        
         #print('Homing Complete: ' + str(dvrk_right.action_complete))
         cam_reset_pub.publish(True)
         countdown = True
@@ -918,7 +942,8 @@ def main():
                     count_time = rospy.get_time()
                     count_down = False
                 while (rospy.get_time() - count_time) <= 3: # countdown timer is set to 3s
-                    message_pub.publish('Begin in %.0fs! Target: %i ' % (3-(rospy.get_time()-count_time),ref_force_train[trial_num - 1]))
+                    message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_train[trial_num - 1]))
+                    #dvrk_right.c.teleop_stop()
                 message_pub.publish('Go!!!')
             else:
                 message_pub.publish('End!')
@@ -928,11 +953,13 @@ def main():
                     count_time = rospy.get_time()
                     count_down = False
                 while (rospy.get_time() - count_time) <= 3:
-                    message_pub.publish('Begin in %.0fs! Target: %i ' % (3-(rospy.get_time()-count_time),ref_force_train[trial_num - 1]))
+                    message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_test[trial_num - 1]))
+                    #dvrk_right.c.teleop_stop()
                 message_pub.publish('Go!!!')
             else:
                 message_pub.publish('End!')
                 
+        dvrk_right.c.teleop_start()        
         dvrk_right.action_complete = False  # reset our flag
 
         dvrk_right.time_start = rospy.get_time() # reset our timer
@@ -950,22 +977,16 @@ def main():
                 exiter = True
                 break
 
-            if (trial_num)%break_trial==1 and trial_num>break_trial:
-                continue_flag = False
-                while continue_flag != 1:
-                    continue_flag = input("Break Time. Once ready, enter 1 to continue: ")
-
-
             print('Starting Trial for Training, No Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]))
 
-            while flag_next == False:
+            while flag_next == False and not rospy.is_shutdown():
                               
                 force = force_feedback  # collect force data from sensor
                 EPpose = ep_pose # collect end effector pose from sensor
                 
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
-                message_pub.publish('%.1fs' % time)
-                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
+                #message_pub.publish('%.1fs' % time)
+                if (time > 0.5 and flag_next == False and trigger == True):
                     flag_next = True
                     if trial_num < len(ref_force_train):
                         message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force,
@@ -993,22 +1014,20 @@ def main():
                 exiter = True
                 break
 
-            if (trial_num)%break_trial==1 and trial_num>break_trial:
-                continue_flag = False
-                while continue_flag != 1:
-                    continue_flag = input("Break Time. Once ready, enter 1 to continue: ")
-
             print('Starting Trial for Training, with Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]) )
 
-            while flag_next == False:
+            while flag_next == False and not rospy.is_shutdown():
                                 
                 force = force_feedback  # collect force data from sensor
                 EPpose = ep_pose # collect end effector pose from sensor
                 dvrk_right.render_force_feedback(force, teleop) # apply for force feedback to MTM
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
-                message_pub.publish('%.1fs' % time)
                 
-                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
+                #if time>trial_time:
+                #    print('times up!!!!')
+                #message_pub.publish('%.1fs' % time)
+                
+                if (time > 0.5 and flag_next == False and trigger == True):
                     flag_next = True
                     if trial_num < len(ref_force_train):
                         message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv')
@@ -1034,21 +1053,16 @@ def main():
                 exiter = True
                 break
 
-            if (trial_num)%break_trial==1 and trial_num>break_trial:
-                continue_flag = False
-                while continue_flag != 1:
-                    continue_flag = input("Break Time. Once ready, enter 1 to continue: ")
-
             print('Starting Trial for Training, with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]) )
 
-            while flag_next == False:
+            while flag_next == False and not rospy.is_shutdown():
                      
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
                 
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
-                message_pub.publish('%.1fs' % time)
-                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
+                #message_pub.publish('%.1fs' % time)
+                if (time > 0.5 and flag_next == False and trigger == True):
                     flag_next = True
                     if trial_num < len(ref_force_train):
                         message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv')
@@ -1092,14 +1106,14 @@ def main():
                     print('this trial in not catch')
                     dvrk_right.c.set_teleop_scale(default_scale)
  
-            while flag_next == False:
+            while flag_next == False and not rospy.is_shutdown():
 
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
                     
                 time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
-                message_pub.publish('%.1fs' % time)                
-                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
+                #message_pub.publish('%.1fs' % time)                
+                if (time > 0.5 and flag_next == False and trigger == True):
                     flag_next = True
                     if trial_num < len(ref_force_test):
                         message = 'next target force: ' + str(ref_force_test[trial_num])
@@ -1132,9 +1146,9 @@ def main():
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
                 time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
-                message_pub.publish('%.1fs' % time)                
+                #message_pub.publish('%.1fs' % time)                
                 
-                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
+                if (time > 0.5 and flag_next == False and trigger == True):
                     flag_next = True
                     if trial_num < len(ref_force_test):
                         message = 'next target force: ' + str(ref_force_test[trial_num])
@@ -1154,6 +1168,7 @@ def main():
 
             # check if we are at the end of our test condition and if we are we flip the exiter flag
             if trial_num == len(ref_force_test)+1:
+
                 exiter = True
                 break
 
@@ -1164,15 +1179,15 @@ def main():
             else:
                 print('Starting Trial for PalpTest, Training with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
 
-            while flag_next == False:
+            while flag_next == False and not rospy.is_shutdown():
 
                 force = force_feedback  # use the force feedback
                 EPpose = ep_pose
  
                     
                 time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
-                message_pub.publish('%.1fs' % time)
-                if ((time > 0.5 and flag_next == False and trigger == True) or time > trial_time):
+                #message_pub.publish('%.1fs' % time)
+                if (time > 0.5 and flag_next == False and trigger == True):
                     flag_next = True
                     if trial_num < len(ref_force_test):
                         message = 'next target force: ' + str(ref_force_test[trial_num])
@@ -1187,7 +1202,15 @@ def main():
         print ('Trial ' + str(trial_num) + ' completed. \n')
         print('Saving data... \n')
         dvrk_right.save_data()
-
+        
+        
+        # clear the data array and reinitialize
+        dvrk_right.data = None
+        force = [0, 0, 0]
+        EPpose = [0,0,0,0,0,0,0]
+        dvrk_right.init_data(force,EPpose, trial_num)
+        
+        
     print('End of Experiment')
 
 
