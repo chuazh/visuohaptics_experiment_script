@@ -118,10 +118,11 @@ def collect_filename():
     haptic = input("Please enter 0 for no haptic condition, 1 for haptics, 2 for manual haptics: ")
     print '\n'
 
-    test = input("Please enter 0 for training, 1 for test, 2 for rotation test, 3 for catch, 4 for palpate: ")
+    test = input("Please enter 0 for training, 1 for test, 2 for vision catch, 3 for force catch, 4 for palpate: ")
     print '\n'
 
     material_select = input("Please select material. 0 for EF and 1 for DS: ")
+    
 
     return np.array([subj, haptic, test, material_select])
 
@@ -142,74 +143,36 @@ def populate_training(force_array, num_trials):
 
     return force_array_seq
 
-def populate_and_randomize_test_catch(force_array, num_trials,num_catch, catch_limit):
+def populate_and_randomize_test_catch(force_array, num_trials, catch_interval, jitter_spread):
     '''
-    This function populates a test sequence of forces based on the forces specified in force_array with multiples of num_trials.
-    Alongside the test sequence, it also generates a flag to indicate catch trials. The number of catch trials is specified by num_catch
-    The function shuffles the sequence of forces and makes sure that no test forces is repeated back to back. It also checks and reshuffles if
-    the number of consecutive catch trials exceed the variable catch_limit.
+    This function populates a sequence of forces based on the forces specified in force_array with multiples of num_trials.
+    Alongside the test sequence, it also generates a flag to indicate catch trials, the intervals per catch trials is given by catch_interval
+    jitter_spread defines the random shift of the catch_interval
     
-    Input: force_array (1xN list) , num_trials (integer)
+    Input: force_array (1xN list) , num_trials (integer), catch_interval (integer), jitter_spread(integer)
     Output: force_array_seq (1x(N*num_trials) list)
     '''
-
-    force_array_seq = [[0,0] for i in range(num_trials * len(force_array))]
-
-    idx = 0
-    for i in range(num_trials * len(force_array)): # populate the sequence list with the forces
-        force_array_seq[i][0] = force_array[idx]
-        if (i + 1) % num_trials == 0:
-            idx += 1
-
-    count_catch = 0
-
-    for i in range(num_trials * len(force_array)):
-
-        if i % num_trials == 0:
-            count_catch = 0
-
-        if count_catch < num_catch:
-            force_array_seq[i][1] = 1
-        else:
-            force_array_seq[i][1] = 0
-
-        count_catch = count_catch + 1
-
-    reset = True # this switch defines if we still have to shuffle
-    catch_limiter = 0
-
-    while reset == True:
-        reset = False
-        np.random.shuffle(force_array_seq)
-        checkedNum = force_array_seq[0][0]
-        checkedCatch = force_array_seq[0][1]
-
-        force_array_tup = [[],[]]
-        for i in range(0, num_trials * len(force_array)):
-            force_array_tup[0].append(force_array_seq[i][0])
-            force_array_tup[1].append(force_array_seq[i][1])
-
-        #print(force_array_tup[0])
-        #print(force_array_tup[1])
-
-        for i in range(1, num_trials * len(force_array)):
-            test = (checkedNum == force_array_seq[i][0]) # checks against the previous value
-            test2 = ((checkedCatch == force_array_seq[i][1]) and (checkedCatch is 1))
-
-            if test2:
-                catch_limiter = catch_limiter + 1
+    force_array_seq = []
+    force_array_catch = []
+    jitter = 0
+    
+    for i in force_array:
+        k = 0
+        for j in range(num_trials):
+            if (j+1)%catch_interval == jitter_spread + 1:
+                k += 1
+                if k == num_trials/catch_interval:
+                    jitter = np.random.randint(-jitter_spread,0)
+                else:
+                    jitter = np.random.randint(-jitter_spread,jitter_spread)
+            if j == (k*catch_interval)-1+jitter:
+                catch_flag = 1
             else:
-                catch_limiter = 0
+                catch_flag = 0
+            force_array_seq.append(i)
+            force_array_catch.append(catch_flag)
 
-            if test == False and catch_limiter < catch_limit:
-                checkedNum = force_array_seq[i][0] # if not same then advance to check the next one
-                checkedCatch = force_array_seq[i][1]
-            else:
-                reset = True # if not use the reset to indicate we have to reshuffle.
-                #print('reshuffling')
-                break
-
-    return force_array_tup
+    return (force_array_seq,force_array_catch)
 
 def populate_and_randomize_test(force_array, num_trials):
     '''
@@ -782,6 +745,7 @@ def main():
     ep_sub = rospy.Subscriber('/ep_pose', Pose, EP_pose)
     message_pub = rospy.Publisher('force_msg', String, queue_size=10)
     cam_reset_pub = rospy.Publisher('cam_reset', Bool, queue_size=10)
+    catch_pub = rospy.Publisher('catch_trial',Bool, queue_size=10)
 
     '''------------ Loading manipulator home positions ------------'''
     if file_data[2] == 4: # if we are in palpation
@@ -790,13 +754,7 @@ def main():
         dvrk_right.set_home_MTM(MTMR_pos)
         dvrk_right.set_home_PSM(PSM_pos)
         dvrk_right.m2.set_wrench_body_orientation_absolute(True)
-    elif file_data[2] == 2: # if we are in rotated testing
-        PSM_pos = load_manipulator_pose('./manipulator_homing/psm_home_rot.txt')
-        MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home_rot.txt')
-        dvrk_right.set_home_MTM(MTMR_pos)
-        dvrk_right.set_home_PSM(PSM_pos)
-        dvrk_right.m2.set_wrench_body_orientation_absolute(True)
-    elif file_data[1] == 0 or file_data[1] == 1: # if we are in RMIS
+    elif file_data[1] == 0 or file_data[1] == 1 or file_data[2] == 2: # if we are in RMIS
         PSM_pos = load_manipulator_pose('./manipulator_homing/psm_home.txt')
         MTMR_pos = load_manipulator_pose('./manipulator_homing/mtm_home.txt')
         dvrk_right.set_home_MTM(MTMR_pos)
@@ -832,12 +790,11 @@ def main():
     ref_force_array_palp = np.array([1, 3, 5, 8])
     ref_force_train = populate_training(ref_force_array_train, num_training_trials)
 
-    if file_data[2] == 3:
-        (ref_force_test, ref_force_catch) = populate_and_randomize_test_catch(ref_force_array_test, num_test_trials, num_catch_trials, num_consec_catches) # catch trial function
+    if file_data[2] == 2 or file_data[2]==3 :
+        _, ref_force_catch = populate_and_randomize_test_catch(ref_force_array_train, num_training_trials, 10, 2) # catch trial function
+        ref_force_test = 0
     elif file_data[2] == 1:
         ref_force_test = populate_and_randomize_test(ref_force_array_test, num_test_trials) # no catch trials
-    elif file_data[2] == 2: # rotated
-        ref_force_test = populate_and_randomize_test(ref_force_array_rot, num_test_trials_gen)
     else: # palpate
         ref_force_test = populate_and_randomize_test(ref_force_array_palp, num_test_trials_gen)
 
@@ -850,11 +807,11 @@ def main():
             save_filename = dvrk_right.name + 'test_array' + '.csv'
             ref_force_test =  np.loadtxt(save_filename,delimiter=',')
         elif file_data[2] == 2:
-            save_filename = dvrk_right.name + 'rot_array' + '.csv'
-            ref_force_test =  np.loadtxt(save_filename,delimiter=',')
+            save_filename = dvrk_right.name + 'vis_catch_array' + '.csv'
+            ref_force_train, ref_force_catch =  np.loadtxt(save_filename,delimiter=',')
         elif file_data[2] == 3:
-            save_filename = dvrk_right.name + 'catch_array' + '.csv'
-            ref_force_test, ref_force_catch =  np.loadtxt(save_filename,delimiter=',')
+            save_filename = dvrk_right.name + 'force_catch_array' + '.csv'
+            ref_force_train, ref_force_catch =  np.loadtxt(save_filename,delimiter=',')
         else:
             save_filename = dvrk_right.name + 'palp_array' + '.csv'
             ref_force_test =  np.loadtxt(save_filename,delimiter=',')
@@ -866,16 +823,17 @@ def main():
             save_filename = dvrk_right.name + 'test_array' + '.csv'
             np.savetxt(save_filename, ref_force_test, delimiter=',', fmt='%.4f')
         elif file_data[2] == 2:
-            save_filename = dvrk_right.name + 'rot_array' + '.csv'
-            np.savetxt(save_filename, ref_force_test, delimiter=',', fmt='%.4f')
+            save_filename = dvrk_right.name + 'vis_catch_array' + '.csv'
+            np.savetxt(save_filename, np.vstack((ref_force_train,ref_force_catch)), delimiter=',', fmt='%.4f')
         elif file_data[2] == 3:
-            save_filename = dvrk_right.name + 'catch_array' + '.csv'
-            np.savetxt(save_filename, np.vstack((ref_force_test,ref_force_catch)), delimiter=',', fmt='%.4f')
+            save_filename = dvrk_right.name + 'force_catch_array' + '.csv'
+            np.savetxt(save_filename, np.vstack((ref_force_train,ref_force_catch)), delimiter=',', fmt='%.4f')
         else:
             save_filename = dvrk_right.name + 'palp_array' + '.csv'
             np.savetxt(save_filename, ref_force_test, delimiter=',', fmt='%.4f')
 
     print(ref_force_train)
+    print(ref_force_catch)
     print(ref_force_test)
 
     if file_data[2] == 3:
@@ -884,6 +842,7 @@ def main():
     # initialize the data structs for recording
     force = [0, 0, 0]
     EPpose = [0,0,0,0,0,0,0]
+    
     dvrk_right.init_data(force,EPpose, trial_num)
 
     '''
@@ -936,7 +895,7 @@ def main():
         #print('Homing Complete: ' + str(dvrk_right.action_complete))
         cam_reset_pub.publish(True)
         countdown = True
-        if file_data[2] == 0:
+        if file_data[2] != 1 or file_data[2] != 4:
             if not trial_num > len(ref_force_train):
                 if countdown:
                     count_time = rospy.get_time()
@@ -970,17 +929,28 @@ def main():
         ////////////////////////////////////////////////////////////////////////////////
         '''
 
-        if file_data[1] == 0 and file_data[2] == 0:
-
+        if file_data[1] == 0 and (file_data[2] == 0 or file_data[2] == 2):
+            
             # check if we are at the end of our test condition and if we are we flip the exiter flag
             if trial_num == len(ref_force_train)+1:
                 exiter = True
                 break
 
             print('Starting Trial for Training, No Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]))
-
+            
+            ''' Catch Trial Conditional Statement'''
+            if file_data[2] == 2:
+                print('vision catch trials enabled')
+                if ref_force_catch[trial_num-1] == 1:
+                    print('this trial is catch')
+                    catch_pub.publish(True)
+                else:
+                    print('this trial in not catch')
+                    catch_pub.publish(False)
+            
+            
             while flag_next == False and not rospy.is_shutdown():
-                              
+                   
                 force = force_feedback  # collect force data from sensor
                 EPpose = ep_pose # collect end effector pose from sensor
                 
@@ -1007,7 +977,7 @@ def main():
         /////////////////////////////////////////////////////////////////////////////////
         '''
 
-        if file_data[1] == 1 and file_data[2] == 0:
+        if file_data[1] == 1 and (file_data[2] == 0 or file_data[2] == 2 or file_data[2] == 3):
 
             # check if we are at the end of our test condition and if we are we flip the exiter flag
             if trial_num == len(ref_force_train)+1:
@@ -1015,12 +985,30 @@ def main():
                 break
 
             print('Starting Trial for Training, with Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]) )
+            
+            ''' Catch Trial Conditional Statement'''
+            if file_data[2] > 1:
+                if file_data[2] == 2:
+                    print('vision catch trials enabled')
+                if file_data[3] == 3:
+                    print('force catch trials enabled')
+                if ref_force_catch[trial_num-1] == 1:
+                    print('this trial is catch')
+                else:
+                    print('this trial in not catch') 
 
             while flag_next == False and not rospy.is_shutdown():
-                                
+                                            
                 force = force_feedback  # collect force data from sensor
                 EPpose = ep_pose # collect end effector pose from sensor
-                dvrk_right.render_force_feedback(force, teleop) # apply for force feedback to MTM
+                
+                if file_data[2] == 3 and ref_force_catch[trial_num-1] == 1:
+                    divisor = 2
+                    force_scaled = [force[0]/divisor,force[1]/divisor,force[2]/divisor] 
+                    dvrk_right.render_force_feedback(force_scaled, teleop) # apply for force feedback to MTM
+                else:
+                    dvrk_right.render_force_feedback(force, teleop) # apply for force feedback to MTM
+                
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
                 
                 #if time>trial_time:
@@ -1046,7 +1034,7 @@ def main():
         /////////////////// Training Phase with Manual Haptics //////////////////////////
         /////////////////////////////////////////////////////////////////////////////////
         '''
-        if file_data[1] == 2 and file_data[2] == 0:
+        if file_data[1] == 2 and (file_data[2] == 0 or file_data[2] == 2):
 
             # check if we are at the end of our test condition and if we are we flip the exiter flag
             if trial_num == len(ref_force_train)+1:
@@ -1054,10 +1042,18 @@ def main():
                 break
 
             print('Starting Trial for Training, with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_train[trial_num-1]) )
-
+            
+            ''' Catch Trial Conditional Statement'''
+            if file_data[2] == 2:
+                print('vision catch trials enabled')
+                if ref_force_catch[trial_num-1] == 1:
+                    print('this trial is catch')
+                else:
+                    print('this trial in not catch') 
+            
             while flag_next == False and not rospy.is_shutdown():
-                     
-                force = force_feedback  # use the force feedback
+
+                force = force_feedback 
                 EPpose = ep_pose
                 
                 time = dvrk_right.record_data(force, EPpose, ref_force_train[trial_num - 1], trial_num)
@@ -1082,7 +1078,7 @@ def main():
         /////////////////////////////////////////////////////////////////////////////////
         '''
 
-        if file_data[2] == 1 or file_data[2] == 3:
+        if file_data[2] == 1:
 
             # check if we are at the end of our test condition and if we are we flip the exiter flag
             if trial_num == len(ref_force_test)+1:
@@ -1113,41 +1109,6 @@ def main():
                     
                 time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
                 #message_pub.publish('%.1fs' % time)                
-                if (time > 0.5 and flag_next == False and trigger == True):
-                    flag_next = True
-                    if trial_num < len(ref_force_test):
-                        message = 'next target force: ' + str(ref_force_test[trial_num])
-                        message_pub.publish(message)
-
-                rate.sleep()
-
-        '''
-        /////////////////////////////////////////////////////////////////////////////////
-        /////////////////////////////// Test Phase Rotated //////////////////////////////
-        /////////////////////////////////////////////////////////////////////////////////
-        '''
-
-        if file_data[2] == 2:
-
-            # check if we are at the end of our test condition and if we are we flip the exiter flag
-            if trial_num == len(ref_force_test)+1:
-                exiter = True
-                break
-
-            if file_data[1] == 1:
-                print('Starting Trial for GTest, Training with Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
-            elif file_data[1] == 2:
-                print('Starting Trial for GTest, Training with no Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
-            else:
-                print('Starting Trial for GTest, Training with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
-
-            while flag_next == False:
-
-                force = force_feedback  # use the force feedback
-                EPpose = ep_pose
-                time = dvrk_right.record_data(force, EPpose, ref_force_test[trial_num - 1], trial_num)
-                #message_pub.publish('%.1fs' % time)                
-                
                 if (time > 0.5 and flag_next == False and trigger == True):
                     flag_next = True
                     if trial_num < len(ref_force_test):
