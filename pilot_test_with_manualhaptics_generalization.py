@@ -832,9 +832,9 @@ def main():
             save_filename = dvrk_right.name + 'palp_array' + '.csv'
             np.savetxt(save_filename, ref_force_test, delimiter=',', fmt='%.4f')
 
-    print(ref_force_train)
-    print(ref_force_catch)
-    print(ref_force_test)
+    #print(ref_force_train)
+    
+    #print(ref_force_test)
 
     if file_data[2] == 3:
         print(ref_force_catch)
