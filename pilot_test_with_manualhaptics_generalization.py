@@ -150,7 +150,7 @@ def populate_and_randomize_test_catch(force_array, num_trials, catch_interval, j
     jitter_spread defines the random shift of the catch_interval
     
     Input: force_array (1xN list) , num_trials (integer), catch_interval (integer), jitter_spread(integer)
-    Output: force_array_seq (1x(N*num_trials) list)
+    Output: tuple of  (force_array_seq,force_array_catch) which corresponds to the force sequence and a binary flag switch for each experiment
     '''
     force_array_seq = []
     force_array_catch = []
@@ -832,12 +832,11 @@ def main():
             save_filename = dvrk_right.name + 'palp_array' + '.csv'
             np.savetxt(save_filename, ref_force_test, delimiter=',', fmt='%.4f')
 
-    #print(ref_force_train)
-    
-    #print(ref_force_test)
-
-    if file_data[2] == 3:
+    print(ref_force_train)
+    print(ref_force_test)
+    if file_data[2] == 2 or file_data[2]==3 :
         print(ref_force_catch)
+
 
     # initialize the data structs for recording
     force = [0, 0, 0]
@@ -895,24 +894,24 @@ def main():
         #print('Homing Complete: ' + str(dvrk_right.action_complete))
         cam_reset_pub.publish(True)
         countdown = True
-        if file_data[2] != 1 or file_data[2] != 4:
-            if not trial_num > len(ref_force_train):
+        if (file_data[2] == 1 or file_data[2] == 4):
+            if not trial_num > len(ref_force_test):
                 if countdown:
                     count_time = rospy.get_time()
                     count_down = False
                 while (rospy.get_time() - count_time) <= 3: # countdown timer is set to 3s
-                    message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_train[trial_num - 1]))
+                    message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_test[trial_num - 1]))
                     #dvrk_right.c.teleop_stop()
                 message_pub.publish('Go!!!')
             else:
                 message_pub.publish('End!')
         else:
-            if not trial_num > len(ref_force_test): 
+            if not trial_num > len(ref_force_train): 
                 if countdown:
                     count_time = rospy.get_time()
                     count_down = False
                 while (rospy.get_time() - count_time) <= 3:
-                    message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_test[trial_num - 1]))
+                    message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_train[trial_num - 1]))
                     #dvrk_right.c.teleop_stop()
                 message_pub.publish('Go!!!')
             else:
