@@ -121,7 +121,7 @@ def collect_filename():
     test = input("Please enter 0 for training, 1 for test, 2 for vision catch, 3 for force catch, 4 for palpate: ")
     print '\n'
 
-    material_select = input("Please select material. 0 for EF and 1 for DS: ")
+    material_select = input("Please select material. 0 for dummy trial and 1 for actual trial: ")
     
 
     return np.array([subj, haptic, test, material_select])
@@ -208,11 +208,12 @@ def populate_and_randomize_test(force_array, num_trials):
 
     return force_array_seq
 
-def post_trial_feedback(ref_force_current, ref_force_next, act_force, trial_num,feedback_file):
+def post_trial_feedback(ref_force_current, ref_force_next, act_force, trial_num,feedback_file,real_trial=True):
     '''
     This function takes in the current reference force and compares it to the actual force exerted by the user.
     the feedback_file contains the data for the upper and lower error bounds what is considered a "successful" trial
-    Input: ref_force_current (double), ref_force_next (double), act_force (double) , trial_num (int) , feedback_file (string)
+    setting real_trial to false results in training mode where no true feedback is given.
+    Input: ref_force_current (double), ref_force_next (double), act_force (double) , trial_num (int) , feedback_file (string), real_trial (boolean)
     Output: msg (ROS message as a string)
     '''
 
@@ -228,18 +229,21 @@ def post_trial_feedback(ref_force_current, ref_force_next, act_force, trial_num,
     '''
 
     ''' Enable this to get qualitative feedback '''
-    for i in range(len(ref_force_array)):
-        if ref_force_current == ref_force_array[i]:
-            
-            if act_force[0] < lower_bounds[i]:
-                msg = "TOO LOW"
-            elif act_force[0] > upper_bounds[i]:
-                msg = "TOO HIGH"
-            else:
-                msg = "CORRECT!"
-    
-    error = round(act_force[0] - ref_force_current,2)
-    msg = msg + ', Error: ' + str(error)
+    if real_trial:
+        for i in range(len(ref_force_array)):
+            if ref_force_current == ref_force_array[i]:
+                
+                if act_force[0] < lower_bounds[i]:
+                    msg = "TOO LOW"
+                elif act_force[0] > upper_bounds[i]:
+                    msg = "TOO HIGH"
+                else:
+                    msg = "CORRECT!"
+        
+        error = round(act_force[0] - ref_force_current,2)
+        msg = msg + ', Error: ' + str(error)
+    else:
+        msg = "FEEDBACK, Error: +/- X.XX"
             
     msg = 'completed ' + str(trial_num) + '. ' + msg + '. next force : ' + str(ref_force_next)
     return msg
@@ -294,7 +298,7 @@ class arm_capture_obj:
             filename = filename + '_palpate'
 
         if subj_data[3] == 0:
-            filename = filename + '_ef50'
+            filename = filename + '_dummy'
         elif subj_data[3] == 1:
             filename = filename + '_ds10'
         elif subj_data[3] == 2:
@@ -959,10 +963,10 @@ def main():
                 if (time > 0.5 and flag_next == False and trigger == True):
                     flag_next = True
                     if trial_num < len(ref_force_train):
-                        message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv')
+                        message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv',file_data[3])
                         message_pub.publish(message)
                     else:
-                        message = post_trial_feedback(ref_force_train[trial_num - 1], 0, force, trial_num,'force_bounds.csv')
+                        message = post_trial_feedback(ref_force_train[trial_num - 1], 0, force, trial_num,'force_bounds.csv',file_data[3])
                         message_pub.publish(message)                    
 
                 rate.sleep()
@@ -1016,11 +1020,11 @@ def main():
                 if (time > 0.5 and flag_next == False and trigger == True):
                     flag_next = True
                     if trial_num < len(ref_force_train):
-                        message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv')
+                        message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv',file_data[3])
                         message_pub.publish(message)
                     else:
                         message = post_trial_feedback(ref_force_train[trial_num - 1], 0, force,
-                                                  trial_num,'force_bounds.csv')
+                                                  trial_num,'force_bounds.csv',file_data[3])
                         message_pub.publish(message) 
                         
                 rate.sleep()
@@ -1059,11 +1063,11 @@ def main():
                 if (time > 0.5 and flag_next == False and trigger == True):
                     flag_next = True
                     if trial_num < len(ref_force_train):
-                        message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv')
+                        message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv',file_data[3])
                         message_pub.publish(message)
                     else:
                         message = post_trial_feedback(ref_force_train[trial_num - 1], 0, force,
-                                                  trial_num,'force_bounds.csv')
+                                                  trial_num,'force_bounds.csv',file_data[3])
                         message_pub.publish(message)
 
                 rate.sleep()
