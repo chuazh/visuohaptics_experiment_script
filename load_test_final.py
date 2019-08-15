@@ -219,6 +219,7 @@ if __name__ == "__main__":
 
                 total_displacement = ep_pose[0]/1000 - initial_position #total_displacement = pose.p.x() - initial_position
                 
+                rate.sleep()
                 
             rospy.sleep(0.5)
 

@@ -238,7 +238,6 @@ def post_trial_feedback(ref_force_current, ref_force_next, act_force, trial_num,
             else:
                 msg = "CORRECT!"
     
-    
     error = round(act_force[0] - ref_force_current,2)
     msg = msg + ', Error: ' + str(error)
             
@@ -781,11 +780,13 @@ def main():
     countdown_time = 3 # count down time length
     trial_time = 7 # trial time length
     
-    # ref_force_array_train = np.array([1,1.5,2.5,4,6])
-    # ref_force_array_test = np.array([2,3,4.5,5.5,8])
     
     ref_force_array_train = np.array([1.5,3.5,6,4.5,2.5]) # make sure to staircase it
     ref_force_array_test = np.array([0.75,1,2,3,4,5,7,8])
+    
+    #ref_force_array_train = np.array([1,2])
+    #ref_force_array_test = np.array([0.5,1,1.5,2,2.5])
+    
     ref_force_array_rot = np.array([1, 3, 5, 8])
     ref_force_array_palp = np.array([1, 3, 5, 8])
     ref_force_train = populate_training(ref_force_array_train, num_training_trials)
@@ -901,7 +902,7 @@ def main():
                     count_down = False
                 while (rospy.get_time() - count_time) <= 3: # countdown timer is set to 3s
                     message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_test[trial_num - 1]))
-                    #dvrk_right.c.teleop_stop()
+                    dvrk_right.c.teleop_stop()
                 message_pub.publish('Go!!!')
             else:
                 message_pub.publish('End!')
@@ -912,7 +913,7 @@ def main():
                     count_down = False
                 while (rospy.get_time() - count_time) <= 3:
                     message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_train[trial_num - 1]))
-                    #dvrk_right.c.teleop_stop()
+                    dvrk_right.c.teleop_stop()
                 message_pub.publish('Go!!!')
             else:
                 message_pub.publish('End!')
@@ -958,12 +959,10 @@ def main():
                 if (time > 0.5 and flag_next == False and trigger == True):
                     flag_next = True
                     if trial_num < len(ref_force_train):
-                        message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force,
-                                                  trial_num,'force_bounds.csv')
+                        message = post_trial_feedback(ref_force_train[trial_num - 1], ref_force_train[trial_num], force, trial_num,'force_bounds.csv')
                         message_pub.publish(message)
                     else:
-                        message = post_trial_feedback(ref_force_train[trial_num - 1], 0, force,
-                                                  trial_num,'force_bounds.csv')
+                        message = post_trial_feedback(ref_force_train[trial_num - 1], 0, force, trial_num,'force_bounds.csv')
                         message_pub.publish(message)                    
 
                 rate.sleep()
@@ -1090,8 +1089,9 @@ def main():
                 print('Starting Trial for Test, Training with no Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
             else:
                 print('Starting Trial for Test, Training with Manual Haptics, Trial No. ' + str(trial_num) + ', Force Level: ' + str(ref_force_test[trial_num-1]))
-
+            
             ''' Catch Trial Conditional Statement'''
+            '''
             if file_data[2] == 3:
                 print('catch trials enabled')
                 if ref_force_catch[trial_num-1] == 1:
@@ -1100,7 +1100,8 @@ def main():
                 else:
                     print('this trial in not catch')
                     dvrk_right.c.set_teleop_scale(default_scale)
- 
+            '''
+            
             while flag_next == False and not rospy.is_shutdown():
 
                 force = force_feedback  # use the force feedback
