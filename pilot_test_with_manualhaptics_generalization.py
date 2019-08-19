@@ -598,6 +598,7 @@ class console_capture_obj:
         self.action_complete = False
 
     def init_data(self, forcefeedback, EPpose, trial_num):
+    
         '''
         Initialize our data frame
         Input : forcefeedback (1x3 list) , trial_num (int)
@@ -648,13 +649,15 @@ class console_capture_obj:
         
         #check if file exists
         if os.path.exists(save_filename):
+            print('file already exists. appending...')
             f = open(save_filename,'ab')
         else:
             f = open(save_filename,'wb')
         
         print ('saving ' + save_filename + '...')
         np.savetxt(f, self.data, delimiter=',', fmt='%.4f')
-
+        f.close()
+        
     def zero_force_manually(self,epsilon):
         home = False
 
@@ -861,7 +864,8 @@ def main():
         dvrk_right.c.set_teleop_scale(default_scale)
         trial_num += 1  # increment our trial num
         flag_next = False  # reset our flag next
-
+        
+        
         ''' Homing Sequence '''
         if file_data[2] == 4: # is we are in palpation home without force zeroing
             dvrk_right.home_no_zero()
@@ -875,7 +879,8 @@ def main():
                 #print(dvrk_right.action_complete)
         elif file_data[1] == 0 or file_data[1] == 1: # only do auto homing if the experiment condition is teleoperated
             print('Homing manipulators... \n')
-            dvrk_right.home_all(False)
+            #dvrk_right.home_all(False)
+            dvrk_right.home_no_zero()
             #while dvrk_right.action_complete == False:
                 #print(dvrk_right.action_complete)
         else:
@@ -899,13 +904,16 @@ def main():
         #print('Homing Complete: ' + str(dvrk_right.action_complete))
         cam_reset_pub.publish(True)
         countdown = True
+        dvrk_right.time_start = rospy.get_time() # reset our timer
+        
         if (file_data[2] == 1 or file_data[2] == 4):
             if not trial_num > len(ref_force_test):
                 if countdown:
                     count_time = rospy.get_time()
                     count_down = False
                 while (rospy.get_time() - count_time) <= 3: # countdown timer is set to 3s
-                    message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_test[trial_num - 1]))
+                    message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_test[trial_num - 1]))                
+                    time = dvrk_right.record_data(force_feedback, ep_pose, ref_force_train[trial_num - 1], trial_num)
                     dvrk_right.c.teleop_stop()
                 message_pub.publish('Go!!!')
             else:
@@ -917,15 +925,15 @@ def main():
                     count_down = False
                 while (rospy.get_time() - count_time) <= 3:
                     message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_train[trial_num - 1]))
+                    time = dvrk_right.record_data(force_feedback, ep_pose, ref_force_train[trial_num - 1], trial_num)
                     dvrk_right.c.teleop_stop()
                 message_pub.publish('Go!!!')
             else:
                 message_pub.publish('End!')
-                
+        
+        
         dvrk_right.c.teleop_start()        
         dvrk_right.action_complete = False  # reset our flag
-
-        dvrk_right.time_start = rospy.get_time() # reset our timer
 
         '''
         /////////////////////////////////////////////////////////////////////////////////
