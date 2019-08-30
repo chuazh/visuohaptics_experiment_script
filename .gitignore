@@ -2,4 +2,4 @@
 *.mp4
 test_audio.py
 pilot_test_with_manualhaptics_generalization (copy 1).py
-/manipulator_homing
+##/manipulator_homing

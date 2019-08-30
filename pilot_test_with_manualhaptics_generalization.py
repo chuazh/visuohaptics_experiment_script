@@ -586,7 +586,7 @@ class console_capture_obj:
         else:
             filename = filename + '_test'
         if subj_data[3] == 0:
-            filename = filename + '_ef50'
+            filename = filename + '_dummy'
         elif subj_data[3] == 1:
             filename = filename + '_ds10'
         elif subj_data[3] == 2:
@@ -744,8 +744,8 @@ def main():
     trial_num = trial_num-1
 
     # create the subscriber to check the footpedals
-    sub = rospy.Subscriber('/dvrk/footpedals/camera', Joy, trigger_callback)
-    #sub = rospy.Subscriber('/advance_trial', Bool, trigger_callback2)
+    #sub = rospy.Subscriber('/dvrk/footpedals/camera', Joy, trigger_callback)
+    sub = rospy.Subscriber('/advance_trial', Bool, trigger_callback2)
     teleop_sub = rospy.Subscriber('/dvrk/footpedals/coag', Joy, teleop_callback)
     force_sub = rospy.Subscriber('/force_sensor', Wrench, haptic_feedback)
     ep_sub = rospy.Subscriber('/ep_pose', Pose, EP_pose)
@@ -851,7 +851,11 @@ def main():
     EPpose = [0,0,0,0,0,0,0]
     
     dvrk_right.init_data(force,EPpose, trial_num)
-
+    
+    if file_data[3] == 0:
+            ref_force_train = ref_force_train[0:5]
+            ref_force_test = ref_force_test[0:5]
+    
     '''
     -------------------------------------------------------------
     ------------------- Experiment Loop -------------------------
@@ -1182,10 +1186,9 @@ def main():
         force = [0, 0, 0]
         EPpose = [0,0,0,0,0,0,0]
         dvrk_right.init_data(force,EPpose, trial_num)
-        
-        
+            
     print('End of Experiment')
-
+    
 
 if __name__ == "__main__":
     main()
