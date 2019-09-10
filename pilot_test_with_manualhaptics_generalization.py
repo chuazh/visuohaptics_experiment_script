@@ -105,6 +105,14 @@ def EP_pose(data):
     ep_pose[5] = data.orientation.z
     ep_pose[6] = data.orientation.w
 
+def rotlock_callback(data):
+    global rotlock
+    butt = data.buttons[0]
+    if butt > 1:
+        rotlock = True
+    else:
+        rotlock = False
+    return
 
 def collect_filename():
     '''
@@ -173,6 +181,19 @@ def populate_and_randomize_test_catch(force_array, num_trials, catch_interval, j
             force_array_catch.append(catch_flag)
 
     return (force_array_seq,force_array_catch)
+
+def populate_and_randomize_test_blocked(force_array,num_trials):
+
+    output_block = np.random.permutation(force_array)
+    
+    for n in range(0,num_trials-1):
+        concat_block = np.random.permutation(force_array)
+        
+        while concat_block[0] == output_block[-1]:
+            concat_block = np.random.permutation(force_array)
+        output_block = np.hstack((output_block,concat_block))
+        
+    return output_block
 
 def populate_and_randomize_test(force_array, num_trials):
     '''
@@ -714,7 +735,7 @@ PSM_pos = PyKDL.Frame(PSM_rot, PSM_cart)
 trigger = False  # utility trigger boolean
 teleop = False  # teleoperation flag
 flag_next = False  # create a flag variable to indicate moving to the next trial (this helps with debouncing)
-
+rotlock = False
 force_feedback = [0, 0, 0]  # initialize our force_feedback variable
 ep_pose = [0,0,0,0,0,0,0]
 
@@ -749,9 +770,11 @@ def main():
     teleop_sub = rospy.Subscriber('/dvrk/footpedals/coag', Joy, teleop_callback)
     force_sub = rospy.Subscriber('/force_sensor', Wrench, haptic_feedback)
     ep_sub = rospy.Subscriber('/ep_pose', Pose, EP_pose)
+    
     message_pub = rospy.Publisher('force_msg', String, queue_size=10)
     cam_reset_pub = rospy.Publisher('cam_reset', Bool, queue_size=10)
     catch_pub = rospy.Publisher('catch_trial',Bool, queue_size=10)
+    set_state_pub = rospy.Publisher('/dvrk/MTMR_PSM2/set_desired_state', String, queue_size = 10)
 
     '''------------ Loading manipulator home positions ------------'''
     if file_data[2] == 4: # if we are in palpation
@@ -787,24 +810,25 @@ def main():
     countdown_time = 3 # count down time length
     trial_time = 7 # trial time length
     
-    
-    ref_force_array_train = np.array([1.5,3.5,6,4.5,2.5]) # make sure to staircase it
-    ref_force_array_test = np.array([0.75,1,2,3,4,5,7,8])
+    ref_force_array_train = np.array([1.5,3.5,5.5,4.5,2.5]) # make sure to staircase it
+    ref_force_array_test = np.array([0.75,1,2,3,4,5,6.5,7.5])
+    #ref_force_array_train = np.array([1.5,3.5,6,4.5,2.5]) # make sure to staircase it
+    #ref_force_array_test = np.array([0.75,1,2,3,4,5,7,8])
     
     #ref_force_array_train = np.array([1,2])
     #ref_force_array_test = np.array([0.5,1,1.5,2,2.5])
     
-    ref_force_array_rot = np.array([1, 3, 5, 8])
-    ref_force_array_palp = np.array([1, 3, 5, 8])
+    ref_force_array_rot = np.array([1, 3, 5, 7])
+    ref_force_array_palp = np.array([1, 3, 5, 7])
     ref_force_train = populate_training(ref_force_array_train, num_training_trials)
 
     if file_data[2] == 2 or file_data[2]==3 :
         _, ref_force_catch = populate_and_randomize_test_catch(ref_force_array_train, num_training_trials, 10, 2) # catch trial function
         ref_force_test = 0
     elif file_data[2] == 1:
-        ref_force_test = populate_and_randomize_test(ref_force_array_test, num_test_trials) # no catch trials
+        ref_force_test = populate_and_randomize_test_blocked(ref_force_array_test, num_test_trials) # no catch trials
     else: # palpate
-        ref_force_test = populate_and_randomize_test(ref_force_array_palp, num_test_trials_gen)
+        ref_force_test = populate_and_randomize_test_blocked(ref_force_array_palp, num_test_trials_gen)
 
     # save our experiment sequence data in case something goes wrong and we need to re-run
     if trial_num > 0: # load the files
@@ -916,9 +940,12 @@ def main():
                     count_time = rospy.get_time()
                     count_down = False
                 while (rospy.get_time() - count_time) <= 3: # countdown timer is set to 3s
-                    message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_test[trial_num - 1]))                
+                    message_pub.publish('Begin in %.1fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_test[trial_num - 1]))                
                     time = dvrk_right.record_data(force_feedback, ep_pose, ref_force_train[trial_num - 1], trial_num)
-                    dvrk_right.c.teleop_stop()
+                    if (rospy.get_time() - count_time) <= 1: 
+                        set_state_pub.publish('ALIGNING_MTM')
+                    else:
+                        dvrk_right.c.teleop_stop()
                 message_pub.publish('Go!!!')
             else:
                 message_pub.publish('End!')
@@ -928,15 +955,19 @@ def main():
                     count_time = rospy.get_time()
                     count_down = False
                 while (rospy.get_time() - count_time) <= 3:
-                    message_pub.publish('Begin in %.0fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_train[trial_num - 1]))
+                    message_pub.publish('Begin in %.1fs! Target: %.2f ' % (3-(rospy.get_time()-count_time),ref_force_train[trial_num - 1]))
                     time = dvrk_right.record_data(force_feedback, ep_pose, ref_force_train[trial_num - 1], trial_num)
-                    dvrk_right.c.teleop_stop()
+                    if file_data[1] != 2: # if we are in manual training mode we don't need this to be done.
+                        if (rospy.get_time() - count_time) <= 1: 
+                            set_state_pub.publish('ALIGNING_MTM')
+                        else:
+                            dvrk_right.c.teleop_stop()
                 message_pub.publish('Go!!!')
             else:
                 message_pub.publish('End!')
         
         
-        dvrk_right.c.teleop_start()        
+        dvrk_right.c.teleop_start()
         dvrk_right.action_complete = False  # reset our flag
 
         '''
@@ -992,6 +1023,7 @@ def main():
         '''
 
         if file_data[1] == 1 and (file_data[2] == 0 or file_data[2] == 2 or file_data[2] == 3):
+            
 
             # check if we are at the end of our test condition and if we are we flip the exiter flag
             if trial_num == len(ref_force_train)+1:
