@@ -49,7 +49,7 @@ def load_manipulator_pose(filename):
 
 def zero_forces(PSM,epsilon):
     home = False
-    Kp = 0.007
+    Kp = 0.005
     Kd = 0.005
     
     F_old = force_feedback
